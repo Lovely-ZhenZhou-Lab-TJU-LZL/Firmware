@@ -198,8 +198,10 @@ __END_DECLS
 #    define PX4_ROOTFSDIR "/home/linaro"
 #  elif defined(__PX4_POSIX_BEBOP)
 #    define PX4_ROOTFSDIR "/home/root"
+#  elif defined(__PX4_POSIX_RPI)
+#    define PX4_ROOTFSDIR "/home/pi/rootfs"
 #  else
-#    define PX4_ROOTFSDIR "rootfs"
+#    define PX4_ROOTFSDIR "/home/pi/rootfs"
 #  endif
 
 #endif // __PX4_QURT

@@ -136,8 +136,8 @@ private:
 		float z_scale;
 	} _gyro_calibration;
 
-	math::Matrix<3, 3>	    _rotation_matrix;
-
+	// math::Matrix<3, 3>	    _rotation_matrix;
+	enum Rotation   _rotation_m;
 	struct mag_calibration_s {
 		float x_offset;
 		float x_scale;
@@ -180,6 +180,7 @@ DfMpu9250Wrapper::DfMpu9250Wrapper(bool mag_enabled, enum Rotation rotation) :
 	_param_update_sub(-1),
 	_accel_calibration{},
 	_gyro_calibration{},
+	_rotation_m(rotation),
 	_mag_calibration{},
 	_accel_orb_class_instance(-1),
 	_gyro_orb_class_instance(-1),
@@ -224,7 +225,7 @@ DfMpu9250Wrapper::DfMpu9250Wrapper(bool mag_enabled, enum Rotation rotation) :
 	}
 
 	// Get sensor rotation matrix
-	get_rot_matrix(rotation, &_rotation_matrix);
+	// get_rot_matrix(rotation, &_rotation_matrix);
 }
 
 DfMpu9250Wrapper::~DfMpu9250Wrapper()
@@ -289,7 +290,7 @@ int DfMpu9250Wrapper::start()
 	}
 
 	PX4_DEBUG("MPU9250 device id is: %d", m_id.dev_id);
-
+	PX4_INFO("MPU9250 device id is: %d", m_id.dev_id);
 	/* Force getting the calibration values. */
 	_update_accel_calibration();
 	_update_gyro_calibration();
@@ -576,25 +577,27 @@ int DfMpu9250Wrapper::_publish(struct imu_sensor_data &data)
 	math::Vector<3> vec_integrated_unused;
 	uint64_t integral_dt_unused;
 
+	rotate_3f(_rotation_m, data.accel_m_s2_x, data.accel_m_s2_y, data.accel_m_s2_z);
 	math::Vector<3> accel_val((data.accel_m_s2_x - _accel_calibration.x_offset) * _accel_calibration.x_scale,
 				  (data.accel_m_s2_y - _accel_calibration.y_offset) * _accel_calibration.y_scale,
 				  (data.accel_m_s2_z - _accel_calibration.z_offset) * _accel_calibration.z_scale);
 
 	// apply sensor rotation on the accel measurement
-	accel_val = _rotation_matrix * accel_val;
+	// accel_val = _rotation_matrix * accel_val;
 
 	_accel_int.put_with_interval(data.fifo_sample_interval_us,
 				     accel_val,
 				     vec_integrated_unused,
 				     integral_dt_unused);
 
-	math::Vector<3> gyro_val(data.gyro_rad_s_x,
-				 data.gyro_rad_s_y,
-				 data.gyro_rad_s_z);
+
 
 	// apply sensor rotation on the gyro measurement
-	gyro_val = _rotation_matrix * gyro_val;
-
+	// gyro_val = _rotation_matrix * gyro_val;
+	rotate_3f(_rotation_m, data.gyro_rad_s_x, data.gyro_rad_s_y, data.gyro_rad_s_z);
+		math::Vector<3> gyro_val(data.gyro_rad_s_x,
+				 data.gyro_rad_s_y,
+				 data.gyro_rad_s_z);
 	// Apply calibration after rotation.
 	gyro_val(0) = (gyro_val(0) - _gyro_calibration.x_offset) * _gyro_calibration.x_scale;
 	gyro_val(1) = (gyro_val(1) - _gyro_calibration.y_offset) * _gyro_calibration.y_scale;
@@ -615,9 +618,9 @@ int DfMpu9250Wrapper::_publish(struct imu_sensor_data &data)
 	// Therefore, only publish every forth time.
 	++_publish_count;
 
-	if (_publish_count < 4) {
-		return 0;
-	}
+	// if (_publish_count < 4) {
+	// 	return 0;
+	// }
 
 	_publish_count = 0;
 
@@ -661,18 +664,18 @@ int DfMpu9250Wrapper::_publish(struct imu_sensor_data &data)
 	}
 
 	// TODO: remove these (or get the values)
-	gyro_report.x_raw = 0;
-	gyro_report.y_raw = 0;
-	gyro_report.z_raw = 0;
+	gyro_report.x_raw = data.gyro_rad_s_x;
+	gyro_report.y_raw = data.gyro_rad_s_y;
+	gyro_report.z_raw = data.gyro_rad_s_z;
 
-	accel_report.x_raw = 0;
-	accel_report.y_raw = 0;
-	accel_report.z_raw = 0;
+	accel_report.x_raw = data.accel_m_s2_x;
+	accel_report.y_raw = data.accel_m_s2_y;
+	accel_report.z_raw = data.accel_m_s2_z;
 
 	if (_mag_enabled) {
-		mag_report.x_raw = 0;
-		mag_report.y_raw = 0;
-		mag_report.z_raw = 0;
+		mag_report.x_raw = data.mag_ga_x;
+		mag_report.y_raw = data.mag_ga_y;
+		mag_report.z_raw = data.mag_ga_z;
 	}
 
 	math::Vector<3> gyro_val_filt;
@@ -692,12 +695,12 @@ int DfMpu9250Wrapper::_publish(struct imu_sensor_data &data)
 	accel_report.z = accel_val_filt(2);
 
 	if (_mag_enabled) {
-
+		rotate_3f(_rotation_m, data.mag_ga_x, data.mag_ga_y, data.mag_ga_z);
 		math::Vector<3> mag_val((data.mag_ga_x - _mag_calibration.x_offset) * _mag_calibration.x_scale,
 					(data.mag_ga_y - _mag_calibration.y_offset) * _mag_calibration.y_scale,
 					(data.mag_ga_z - _mag_calibration.z_offset) * _mag_calibration.z_scale);
 
-		mag_val = _rotation_matrix * mag_val;
+		// mag_val = _rotation_matrix * mag_val;
 
 		mag_report.x = mag_val(0);
 		mag_report.y = mag_val(1);

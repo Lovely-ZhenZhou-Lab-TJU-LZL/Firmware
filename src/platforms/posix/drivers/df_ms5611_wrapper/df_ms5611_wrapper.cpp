@@ -96,13 +96,20 @@ private:
 
 	perf_counter_t		_baro_sample_perf;
 
+	bool _temp_initialized;
+	float _last_temp_c;
+	float _last_temp_p;
+
 };
 
 DfMS5611Wrapper::DfMS5611Wrapper() :
 	MS5611(BARO_DEVICE_PATH),
 	_baro_topic(nullptr),
 	_baro_orb_class_instance(-1),
-	_baro_sample_perf(perf_alloc(PC_ELAPSED, "df_baro_read"))
+	_baro_sample_perf(perf_alloc(PC_ELAPSED, "df_baro_read")),
+	_temp_initialized(false),
+	_last_temp_c(0.0f),
+	_last_temp_p(0.0f)
 {
 }
 
@@ -185,12 +192,37 @@ int DfMS5611Wrapper::_publish(struct baro_sensor_data &data)
 	// TODO: when is this ever blocked?
 	if (!(m_pub_blocked)) {
 
-		if (_baro_topic == nullptr) {
+		if (_baro_topic == nullptr ) {
 			_baro_topic = orb_advertise_multi(ORB_ID(sensor_baro), &baro_report,
 							  &_baro_orb_class_instance, ORB_PRIO_DEFAULT);
 
 		} else {
-			orb_publish(ORB_ID(sensor_baro), _baro_topic, &baro_report);
+
+		  if (!_temp_initialized) {
+ 				if (baro_report.temperature > -20.0f && baro_report.temperature < 55.0f){
+				_last_temp_c = baro_report.temperature;
+				_last_temp_p = baro_report.altitude;
+				DF_LOG_INFO("MS5611 temperature initialized to: %f", (double) _last_temp_c);
+				_temp_initialized = true;
+				}
+			} else{
+
+		    	if (baro_report.temperature > -40.0f && baro_report.temperature < 85.0f){
+					if(fabsf(baro_report.temperature - _last_temp_c) < 6.0f 
+						&& fabsf(baro_report.altitude - _last_temp_p) < 100.0f){
+
+							orb_publish(ORB_ID(sensor_baro), _baro_topic, &baro_report);
+							_last_temp_c = baro_report.temperature;
+							_last_temp_p = baro_report.altitude;
+
+						} else{
+							DF_LOG_INFO("Error: ms5611 bad measure! : %fc,%fm",(double)baro_report.temperature,(double)baro_report.altitude);
+						}
+				} else {
+					DF_LOG_INFO("Error: ms5611 SO bad measure!");
+				} 
+		    }
+
 		}
 	}
 

@@ -161,6 +161,9 @@ static int32_t _utc_offset = 0;
 #else
 #define MOUNTPOINT "/root"
 #endif
+#if defined(__PX4_POSIX_RPI)
+#define MOUNTPOINT PX4_ROOTFSDIR"/fs/microsd"
+#endif
 static const char *mountpoint = MOUNTPOINT;
 static const char *log_root = MOUNTPOINT "/log";
 static orb_advert_t mavlink_log_pub = NULL;
