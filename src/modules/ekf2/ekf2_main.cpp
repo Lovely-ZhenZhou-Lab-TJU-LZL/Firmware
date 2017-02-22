@@ -135,6 +135,23 @@ private:
 	float	_default_ev_pos_noise = 0.05f;	// external vision position noise used when an invalid value is supplied
 	float	_default_ev_ang_noise = 0.05f;	// external vision angle noise used when an invalid value is supplied
 
+	// Initialise time stamps used to send sensor data to the EKF and for logging
+	uint64_t _timestamp_mag_us = 0;
+	uint64_t _timestamp_balt_us = 0;
+
+	// Used to down sample magnetometer data
+	float _mag_data_sum[3];			// summed magnetometer readings (Ga)
+	uint64_t _mag_time_sum_ms;		// summed magnetoemter time stamps (msec)
+	uint8_t _mag_sample_count = 0;		// number of magnetometer measurements summed
+	uint32_t _mag_time_ms_last_used = 0;	// time stamp in msec of the last averaged magnetometer measurement used by the EKF
+
+	// Used to down sample barometer data
+	float _balt_data_sum;			// summed barometric altitude readings (m)
+	uint64_t _balt_time_sum_ms;		// summed barometric altitude time stamps (msec)
+	uint8_t _balt_sample_count = 0;		// number of barometric altitude measurements summed
+	uint32_t _balt_time_ms_last_used =
+		0;	// time stamp in msec of the last averaged barometric altitude measurement used by the EKF
+
 	bool	_prev_landed = true;	// landed status from the previous frame
 
 	float _acc_hor_filt = 0.0f; 	// low-pass filtered horizontal acceleration
@@ -157,6 +174,7 @@ private:
 
 	parameters *_params;	// pointer to ekf parameter struct (located in _ekf class instance)
 
+	control::BlockParamExtInt _obs_dt_min_ms;
 	control::BlockParamExtFloat _mag_delay_ms;
 	control::BlockParamExtFloat _baro_delay_ms;
 	control::BlockParamExtFloat _gps_delay_ms;
@@ -181,31 +199,32 @@ private:
 	control::BlockParamExtFloat _gps_pos_noise;
 	control::BlockParamExtFloat _pos_noaid_noise;
 	control::BlockParamExtFloat _baro_noise;
-	control::BlockParamExtFloat _baro_innov_gate;     // innovation gate for barometric height innovation test (std dev)
+	control::BlockParamExtFloat _baro_innov_gate;	// innovation gate for barometric height innovation test (std dev)
 	control::BlockParamExtFloat
 	_posNE_innov_gate;    // innovation gate for GPS horizontal position innovation test (std dev)
-	control::BlockParamExtFloat _vel_innov_gate;      // innovation gate for GPS velocity innovation test (std dev)
-	control::BlockParamExtFloat _tas_innov_gate;	   // innovation gate for tas innovation test (std dev)
+	control::BlockParamExtFloat _vel_innov_gate;	// innovation gate for GPS velocity innovation test (std dev)
+	control::BlockParamExtFloat _tas_innov_gate;	// innovation gate for tas innovation test (std dev)
 
 	control::BlockParamExtFloat _mag_heading_noise;	// measurement noise used for simple heading fusion
-	control::BlockParamExtFloat _mag_noise;           // measurement noise used for 3-axis magnetoemter fusion (Gauss)
-	control::BlockParamExtFloat _eas_noise;			// measurement noise used for airspeed fusion (std m/s)
-	control::BlockParamExtFloat _mag_declination_deg;	// magnetic declination in degrees
-	control::BlockParamExtFloat _heading_innov_gate;	// innovation gate for heading innovation test
+	control::BlockParamExtFloat _mag_noise;		// measurement noise used for 3-axis magnetoemter fusion (Gauss)
+	control::BlockParamExtFloat _eas_noise;		// measurement noise used for airspeed fusion (std m/s)
+	control::BlockParamExtFloat _beta_noise;	// synthetic sideslip noise (m/s)
+	control::BlockParamExtFloat _mag_declination_deg;// magnetic declination in degrees
+	control::BlockParamExtFloat _heading_innov_gate;// innovation gate for heading innovation test
 	control::BlockParamExtFloat _mag_innov_gate;	// innovation gate for magnetometer innovation test
 	control::BlockParamExtInt
 	_mag_decl_source;       // bitmasked integer used to control the handling of magnetic declination
 	control::BlockParamExtInt _mag_fuse_type;         // integer ued to control the type of magnetometer fusion used
 
-	control::BlockParamExtInt _gps_check_mask;        // bitmasked integer used to activate the different GPS quality checks
-	control::BlockParamExtFloat _requiredEph;         // maximum acceptable horiz position error (m)
-	control::BlockParamExtFloat _requiredEpv;         // maximum acceptable vert position error (m)
-	control::BlockParamExtFloat _requiredSacc;        // maximum acceptable speed error (m/s)
-	control::BlockParamExtInt _requiredNsats;         // minimum acceptable satellite count
-	control::BlockParamExtFloat _requiredGDoP;        // maximum acceptable geometric dilution of precision
-	control::BlockParamExtFloat _requiredHdrift;      // maximum acceptable horizontal drift speed (m/s)
-	control::BlockParamExtFloat _requiredVdrift;      // maximum acceptable vertical drift speed (m/s)
-	control::BlockParamExtInt _param_record_replay_msg; // indicates if we want to record ekf2 replay messages
+	control::BlockParamExtInt _gps_check_mask;	// bitmasked integer used to activate the different GPS quality checks
+	control::BlockParamExtFloat _requiredEph;	// maximum acceptable horiz position error (m)
+	control::BlockParamExtFloat _requiredEpv;	// maximum acceptable vert position error (m)
+	control::BlockParamExtFloat _requiredSacc;	// maximum acceptable speed error (m/s)
+	control::BlockParamExtInt _requiredNsats;	// minimum acceptable satellite count
+	control::BlockParamExtFloat _requiredGDoP;	// maximum acceptable geometric dilution of precision
+	control::BlockParamExtFloat _requiredHdrift;	// maximum acceptable horizontal drift speed (m/s)
+	control::BlockParamExtFloat _requiredVdrift;	// maximum acceptable vertical drift speed (m/s)
+	control::BlockParamExtInt _param_record_replay_msg;// indicates if we want to record ekf2 replay messages
 
 	// measurement source control
 	control::BlockParamExtInt
@@ -251,6 +270,7 @@ private:
 	control::BlockParamFloat
 	_arspFusionThreshold; 	// a value of zero will disabled airspeed fusion. Any another positive value will determine
 	// the minimum airspeed which will still be fused
+	control::BlockParamInt _fuseBeta; // 0 disables synthetic sideslip fusion, 1 activates it
 
 	// output predictor filter time constants
 	control::BlockParamExtFloat _tau_vel;	// time constant used by the output velocity complementary filter (s)
@@ -285,6 +305,7 @@ Ekf2::Ekf2():
 	_lp_yaw_rate(250.0f, 20.0f),
 	_ekf(),
 	_params(_ekf.getParamHandle()),
+	_obs_dt_min_ms(this, "EKF2_MIN_OBS_DT", false, _params->sensor_interval_min_ms),
 	_mag_delay_ms(this, "EKF2_MAG_DELAY", false, _params->mag_delay_ms),
 	_baro_delay_ms(this, "EKF2_BARO_DELAY", false, _params->baro_delay_ms),
 	_gps_delay_ms(this, "EKF2_GPS_DELAY", false, _params->gps_delay_ms),
@@ -312,6 +333,7 @@ Ekf2::Ekf2():
 	_mag_heading_noise(this, "EKF2_HEAD_NOISE", false, _params->mag_heading_noise),
 	_mag_noise(this, "EKF2_MAG_NOISE", false, _params->mag_noise),
 	_eas_noise(this, "EKF2_EAS_NOISE", false, _params->eas_noise),
+	_beta_noise(this, "EKF2_BETA_NOISE", false, _params->beta_noise),
 	_mag_declination_deg(this, "EKF2_MAG_DECL", false, _params->mag_declination_deg),
 	_heading_innov_gate(this, "EKF2_HDG_GATE", false, _params->heading_innov_gate),
 	_mag_innov_gate(this, "EKF2_MAG_GATE", false, _params->mag_innov_gate),
@@ -355,6 +377,7 @@ Ekf2::Ekf2():
 	_ev_pos_y(this, "EKF2_EV_POS_Y", false, _params->ev_pos_body(1)),
 	_ev_pos_z(this, "EKF2_EV_POS_Z", false, _params->ev_pos_body(2)),
 	_arspFusionThreshold(this, "EKF2_ARSP_THR", false),
+	_fuseBeta(this, "EKF2_FUSE_BETA", false),
 	_tau_vel(this, "EKF2_TAU_VEL", false, _params->vel_Tau),
 	_tau_pos(this, "EKF2_TAU_POS", false, _params->pos_Tau),
 	_gyr_bias_init(this, "EKF2_GBIAS_INIT", false, _params->switch_on_gyro_bias),
@@ -513,18 +536,63 @@ void Ekf2::task_main()
 
 		// read mag data
 		if (sensors.magnetometer_timestamp_relative == sensor_combined_s::RELATIVE_TIMESTAMP_INVALID) {
-			_ekf.setMagData(0, sensors.magnetometer_ga);
+			// set a zero timestamp to let the ekf replay program know that this data is not valid
+			_timestamp_mag_us = 0;
 
 		} else {
-			_ekf.setMagData(sensors.timestamp + sensors.magnetometer_timestamp_relative, sensors.magnetometer_ga);
+			if ((sensors.timestamp + sensors.magnetometer_timestamp_relative) != _timestamp_mag_us) {
+				_timestamp_mag_us = sensors.timestamp + sensors.magnetometer_timestamp_relative;
+
+				// If the time last used by the EKF is less than specified, then accumulate the
+				// data and push the average when the 50msec is reached.
+				_mag_time_sum_ms += _timestamp_mag_us / 1000;
+				_mag_sample_count++;
+				_mag_data_sum[0] += sensors.magnetometer_ga[0];
+				_mag_data_sum[1] += sensors.magnetometer_ga[1];
+				_mag_data_sum[2] += sensors.magnetometer_ga[2];
+				uint32_t mag_time_ms = _mag_time_sum_ms / _mag_sample_count;
+
+				if (mag_time_ms - _mag_time_ms_last_used > _params->sensor_interval_min_ms) {
+					float mag_sample_count_inv = 1.0f / (float)_mag_sample_count;
+					float mag_data_avg_ga[3] = {_mag_data_sum[0] *mag_sample_count_inv , _mag_data_sum[1] *mag_sample_count_inv , _mag_data_sum[2] *mag_sample_count_inv};
+					_ekf.setMagData(1000 * (uint64_t)mag_time_ms, mag_data_avg_ga);
+					_mag_time_ms_last_used = mag_time_ms;
+					_mag_time_sum_ms = 0;
+					_mag_sample_count = 0;
+					_mag_data_sum[0] = 0.0f;
+					_mag_data_sum[1] = 0.0f;
+					_mag_data_sum[2] = 0.0f;
+
+				}
+			}
 		}
 
 		// read baro data
 		if (sensors.baro_timestamp_relative == sensor_combined_s::RELATIVE_TIMESTAMP_INVALID) {
-			_ekf.setBaroData(0, &sensors.baro_alt_meter);
+			// set a zero timestamp to let the ekf replay program know that this data is not valid
+			_timestamp_balt_us = 0;
 
 		} else {
-			_ekf.setBaroData(sensors.timestamp + sensors.baro_timestamp_relative, &sensors.baro_alt_meter);
+			if ((sensors.timestamp + sensors.baro_timestamp_relative) != _timestamp_balt_us) {
+				_timestamp_balt_us = sensors.timestamp + sensors.baro_timestamp_relative;
+
+				// If the time last used by the EKF is less than specified, then accumulate the
+				// data and push the average when the 50msec is reached.
+				_balt_time_sum_ms += _timestamp_balt_us / 1000;
+				_balt_sample_count++;
+				_balt_data_sum += sensors.baro_alt_meter;
+				uint32_t balt_time_ms = _balt_time_sum_ms / _balt_sample_count;
+
+				if (balt_time_ms - _balt_time_ms_last_used > (uint32_t)_params->sensor_interval_min_ms) {
+					float balt_data_avg = _balt_data_sum / (float)_balt_sample_count;
+					_ekf.setBaroData(1000 * (uint64_t)balt_time_ms, &balt_data_avg);
+					_balt_time_ms_last_used = balt_time_ms;
+					_balt_time_sum_ms = 0;
+					_balt_sample_count = 0;
+					_balt_data_sum = 0.0f;
+
+				}
+			}
 		}
 
 		// read gps data if available
@@ -548,6 +616,7 @@ void Ekf2::task_main()
 			gps_msg.gdop = 0.0f;
 
 			_ekf.setGpsData(gps.timestamp, &gps_msg);
+
 		}
 
 		// only set airspeed data if condition for airspeed fusion are met
@@ -558,6 +627,10 @@ void Ekf2::task_main()
 			float eas2tas = airspeed.true_airspeed_m_s / airspeed.indicated_airspeed_m_s;
 			_ekf.setAirspeedData(airspeed.timestamp, &airspeed.true_airspeed_m_s, &eas2tas);
 		}
+
+		// only fuse synthetic sideslip measurements if conditions are met
+		bool fuse_beta = !vehicle_status.is_rotary_wing && _fuseBeta.get();
+		_ekf.set_fuse_beta_flag(fuse_beta);
 
 		if (optical_flow_updated) {
 			flow_message flow;
@@ -895,6 +968,7 @@ void Ekf2::task_main()
 			_ekf.get_mag_innov(&innovations.mag_innov[0]);
 			_ekf.get_heading_innov(&innovations.heading_innov);
 			_ekf.get_airspeed_innov(&innovations.airspeed_innov);
+			_ekf.get_beta_innov(&innovations.beta_innov);
 			_ekf.get_flow_innov(&innovations.flow_innov[0]);
 			_ekf.get_hagl_innov(&innovations.hagl_innov);
 
@@ -902,6 +976,7 @@ void Ekf2::task_main()
 			_ekf.get_mag_innov_var(&innovations.mag_innov_var[0]);
 			_ekf.get_heading_innov_var(&innovations.heading_innov_var);
 			_ekf.get_airspeed_innov_var(&innovations.airspeed_innov_var);
+			_ekf.get_beta_innov_var(&innovations.beta_innov_var);
 			_ekf.get_flow_innov_var(&innovations.flow_innov_var[0]);
 			_ekf.get_hagl_innov_var(&innovations.hagl_innov_var);
 
@@ -913,6 +988,7 @@ void Ekf2::task_main()
 			} else {
 				orb_publish(ORB_ID(ekf2_innovations), _estimator_innovations_pub, &innovations);
 			}
+
 		}
 
 		// save the declination to the EKF2_MAG_DECL parameter when a land event is detected
@@ -932,8 +1008,8 @@ void Ekf2::task_main()
 			replay.time_ref = now;
 			replay.gyro_integral_dt = sensors.gyro_integral_dt;
 			replay.accelerometer_integral_dt = sensors.accelerometer_integral_dt;
-			replay.magnetometer_timestamp = sensors.timestamp + sensors.magnetometer_timestamp_relative;
-			replay.baro_timestamp = sensors.timestamp + sensors.baro_timestamp_relative;
+			replay.magnetometer_timestamp = _timestamp_mag_us;
+			replay.baro_timestamp = _timestamp_balt_us;
 			memcpy(replay.gyro_rad, sensors.gyro_rad, sizeof(replay.gyro_rad));
 			memcpy(replay.accelerometer_m_s2, sensors.accelerometer_m_s2, sizeof(replay.accelerometer_m_s2));
 			memcpy(replay.magnetometer_ga, sensors.magnetometer_ga, sizeof(replay.magnetometer_ga));
