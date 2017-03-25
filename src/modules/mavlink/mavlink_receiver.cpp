@@ -118,6 +118,7 @@ MavlinkReceiver::MavlinkReceiver(Mavlink *parent) :
 	_force_sp_pub(nullptr),
 	_pos_sp_triplet_pub(nullptr),
 	_att_pos_mocap_pub(nullptr),
+	_whycon_target_pub(nullptr),
 	_vision_position_pub(nullptr),
 	_telemetry_status_pub(nullptr),
 	_rc_pub(nullptr),
@@ -270,7 +271,8 @@ MavlinkReceiver::handle_message(mavlink_message_t *msg)
 	case MAVLINK_MSG_ID_LOGGING_ACK:
 		handle_message_logging_ack(msg);
 		break;
-
+	case MAVLINK_MSG_ID_WHYCON_TARGET:
+		handle_message_whycon_target(msg);
 	default:
 		break;
 	}
@@ -720,7 +722,31 @@ MavlinkReceiver::handle_message_att_pos_mocap(mavlink_message_t *msg)
 		orb_publish(ORB_ID(att_pos_mocap), _att_pos_mocap_pub, &att_pos_mocap);
 	}
 }
+void
+MavlinkReceiver::handle_message_whycon_target(mavlink_message_t *msg)
+{
+	mavlink_whycon_target_t wc_target;
+	mavlink_msg_whycon_target_decode(msg, &wc_target);
+	
+	struct whycon_target_s whycon_target = {};
+	whycon_target.timestamp = sync_stamp(wc_target.time_usec);
+	whycon_target.timestamp_received = hrt_absolute_time();
 
+	whycon_target.id = wc_target.target_id;
+	whycon_target.x = wc_target.pos_x;
+	whycon_target.y = wc_target.pos_y;
+	whycon_target.z = wc_target.pos_z;
+	whycon_target.q[0] = wc_target.orient_w;
+	whycon_target.q[1] = wc_target.orient_x;
+	whycon_target.q[2] = wc_target.orient_y;
+	whycon_target.q[3] = wc_target.orient_z;
+	if (_whycon_target_pub == nullptr) {
+		_whycon_target_pub = orb_advertise(ORB_ID(whycon_target), &whycon_target);
+
+	} else {
+		orb_publish(ORB_ID(whycon_target), _whycon_target_pub, &whycon_target);
+	}
+}
 void
 MavlinkReceiver::handle_message_set_position_target_local_ned(mavlink_message_t *msg)
 {

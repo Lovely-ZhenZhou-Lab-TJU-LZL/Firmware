@@ -78,10 +78,10 @@
 #include <uORB/topics/transponder_report.h>
 #include <uORB/topics/gps_inject_data.h>
 #include <uORB/topics/control_state.h>
-
+#include <uORB/topics/whycon_target.h>
 
 #include "mavlink_ftp.h"
-
+#include <v2.0/whycon_cn/mavlink_msg_whycon_target.h>
 #define PX4_EPOCH_SECS 1234567890ULL
 
 class Mavlink;
@@ -147,7 +147,7 @@ private:
 	void handle_message_battery_status(mavlink_message_t *msg);
 	void handle_message_serial_control(mavlink_message_t *msg);
 	void handle_message_logging_ack(mavlink_message_t *msg);
-
+	void handle_message_whycon_target(mavlink_message_t *msg);
 	void *receive_thread(void *arg);
 
 	/**
@@ -213,6 +213,7 @@ private:
 	orb_advert_t _force_sp_pub;
 	orb_advert_t _pos_sp_triplet_pub;
 	orb_advert_t _att_pos_mocap_pub;
+	orb_advert_t _whycon_target_pub;
 	orb_advert_t _vision_position_pub;
 	orb_advert_t _telemetry_status_pub;
 	orb_advert_t _rc_pub;
