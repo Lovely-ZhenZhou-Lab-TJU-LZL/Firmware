@@ -35,7 +35,12 @@ set(config_module_list
 	systemcmds/reboot
 	systemcmds/topic_listener
 	systemcmds/perf
-
+	
+	#
+	# Whycon modules
+	#
+	modules/whycon_observer
+	
 	#
 	# Estimation modules
 	#

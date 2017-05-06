@@ -31,8 +31,8 @@
 #
 ############################################################################
 px4_add_module(
-	MODULE modules__leader_esitimator
-	MAIN leader_esitimator
+	MODULE modules__whycon_observer
+	MAIN whycon_observer
 	STACK_MAIN 1200
 	STACK_MAX 2400
 	COMPILE_FLAGS

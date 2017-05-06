@@ -1809,6 +1809,7 @@ int commander_thread_main(int argc, char *argv[])
 				status_changed = true;
 			}
 
+
 		} else {
 			if (!status_flags.offboard_control_signal_lost) {
 				status_flags.offboard_control_signal_lost = true;
@@ -1828,6 +1829,10 @@ int commander_thread_main(int argc, char *argv[])
 				}
 
 				if (status_flags.offboard_control_loss_timeout) {
+				/* -----lu  if offboard timeout disarm the quadrotor ------ */	
+					if (TRANSITION_DENIED == arm_disarm(false, &mavlink_log_pub, "offboard timeout")) {
+						warnx("rejected disarm");
+					}
 					status_changed = true;
 				}
 			}

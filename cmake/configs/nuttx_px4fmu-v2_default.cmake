@@ -100,7 +100,12 @@ set(config_module_list
 	modules/position_estimator_inav
 	modules/local_position_estimator
 	modules/ekf2
-
+	
+	#
+	# Whycon modules
+	#
+	modules/whycon_observer
+	
 	#
 	# Vehicle Control
 	#

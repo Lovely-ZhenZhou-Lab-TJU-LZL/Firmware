@@ -81,7 +81,6 @@
 #include <uORB/topics/whycon_target.h>
 
 #include "mavlink_ftp.h"
-#include <v2.0/whycon_cn/mavlink_msg_whycon_target.h>
 #define PX4_EPOCH_SECS 1234567890ULL
 
 class Mavlink;

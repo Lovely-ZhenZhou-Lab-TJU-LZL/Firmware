@@ -122,6 +122,7 @@ set(msg_file_names
 	wind_estimate.msg
 	vehicle_roi.msg
 	whycon_target.msg
+	vehicle_wt_message.msg
 	)
 
 # Get absolute paths

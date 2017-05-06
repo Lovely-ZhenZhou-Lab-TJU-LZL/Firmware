@@ -163,6 +163,7 @@ MavlinkReceiver::handle_message(mavlink_message_t *msg)
 		}
 	}
 
+//		PX4_INFO("msgid: %d",msg->msgid);
 	switch (msg->msgid) {
 	case MAVLINK_MSG_ID_COMMAND_LONG:
 		if (_mavlink->accepting_commands()) {
@@ -196,6 +197,11 @@ MavlinkReceiver::handle_message(mavlink_message_t *msg)
 	case MAVLINK_MSG_ID_ATT_POS_MOCAP:
 		handle_message_att_pos_mocap(msg);
 		break;
+        
+	case MAVLINK_MSG_ID_WHYCON_TARGET:
+		PX4_INFO("whycon received!!!");
+		handle_message_whycon_target(msg);
+        break;
 
 	case MAVLINK_MSG_ID_SET_POSITION_TARGET_LOCAL_NED:
 		handle_message_set_position_target_local_ned(msg);
@@ -271,8 +277,7 @@ MavlinkReceiver::handle_message(mavlink_message_t *msg)
 	case MAVLINK_MSG_ID_LOGGING_ACK:
 		handle_message_logging_ack(msg);
 		break;
-	case MAVLINK_MSG_ID_WHYCON_TARGET:
-		handle_message_whycon_target(msg);
+        
 	default:
 		break;
 	}
@@ -740,6 +745,9 @@ MavlinkReceiver::handle_message_whycon_target(mavlink_message_t *msg)
 	whycon_target.q[1] = wc_target.orient_x;
 	whycon_target.q[2] = wc_target.orient_y;
 	whycon_target.q[3] = wc_target.orient_z;
+    //printf("whycon_target   id :%d \n",whycon_target.id);
+    //printf("whycon_target q:   %.2f  %.2f  %.2f  %.2f \n",(double)whycon_target.q[0],(double)whycon_target.q[1],(double)whycon_target.q[2],(double)whycon_target.q[3]);
+    //printf("whycon_target pos: %.2f  %.2f  %.2f\n",(double)whycon_target.x,(double)whycon_target.y,(double)whycon_target.z);
 	if (_whycon_target_pub == nullptr) {
 		_whycon_target_pub = orb_advertise(ORB_ID(whycon_target), &whycon_target);
 
@@ -1873,22 +1881,43 @@ MavlinkReceiver::handle_message_hil_gps(mavlink_message_t *msg)
 void MavlinkReceiver::handle_message_follow_target(mavlink_message_t *msg)
 {
 	mavlink_follow_target_t follow_target_msg;
-	follow_target_s follow_target_topic = { };
+	//follow_target_s follow_target_topic = { };
 
 	mavlink_msg_follow_target_decode(msg, &follow_target_msg);
 
-	follow_target_topic.timestamp = hrt_absolute_time();
+	struct whycon_target_s whycon_target = {};
+	whycon_target.timestamp = sync_stamp(follow_target_msg.timestamp);
+	whycon_target.timestamp_received = hrt_absolute_time();
 
-	follow_target_topic.lat = follow_target_msg.lat * 1e-7;
-	follow_target_topic.lon = follow_target_msg.lon * 1e-7;
-	follow_target_topic.alt = follow_target_msg.alt;
-
-	if (_follow_target_pub == nullptr) {
-		_follow_target_pub = orb_advertise(ORB_ID(follow_target), &follow_target_topic);
+	whycon_target.id = follow_target_msg.est_capabilities;
+	whycon_target.x = follow_target_msg.vel[0];
+	whycon_target.y = follow_target_msg.vel[1];
+	whycon_target.z = follow_target_msg.vel[2];
+	whycon_target.q[0] = follow_target_msg.attitude_q[0];//wc_target.orient_w;
+	whycon_target.q[1] = follow_target_msg.attitude_q[1];//wc_target.orient_x;
+	whycon_target.q[2] = follow_target_msg.attitude_q[2];//wc_target.orient_y;
+	whycon_target.q[3] = follow_target_msg.attitude_q[3];//wc_target.orient_z;
+    //printf("whycon_target   id :%d \n",whycon_target.id);
+    //printf("whycon_target q:   %.2f  %.2f  %.2f  %.2f \n",(double)whycon_target.q[0],(double)whycon_target.q[1],(double)whycon_target.q[2],(double)whycon_target.q[3]);
+    //printf("whycon_target pos: %.2f  %.2f  %.2f\n",(double)whycon_target.x,(double)whycon_target.y,(double)whycon_target.z);
+	if (_whycon_target_pub == nullptr) {
+		_whycon_target_pub = orb_advertise(ORB_ID(whycon_target), &whycon_target);
 
 	} else {
-		orb_publish(ORB_ID(follow_target), _follow_target_pub, &follow_target_topic);
+		orb_publish(ORB_ID(whycon_target), _whycon_target_pub, &whycon_target);
 	}
+	//follow_target_topic.timestamp = hrt_absolute_time();
+
+	//follow_target_topic.lat = follow_target_msg.lat * 1e-7;
+	//follow_target_topic.lon = follow_target_msg.lon * 1e-7;
+	//follow_target_topic.alt = follow_target_msg.alt;
+
+	//if (_follow_target_pub == nullptr) {
+		//_follow_target_pub = orb_advertise(ORB_ID(follow_target), &follow_target_topic);
+
+	//} else {
+		//orb_publish(ORB_ID(follow_target), _follow_target_pub, &follow_target_topic);
+	//}
 }
 
 void MavlinkReceiver::handle_message_adsb_vehicle(mavlink_message_t *msg)
