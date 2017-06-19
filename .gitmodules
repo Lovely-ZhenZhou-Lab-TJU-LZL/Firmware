@@ -1,9 +1,9 @@
 [submodule "mavlink/include/mavlink/v1.0"]
 	path = mavlink/include/mavlink/v1.0
-	url = https://github.com/lhc610github/c_library_v1.git
+	url = https://github.com/lhc610github/mavlink_v1_test.git
 [submodule "mavlink/include/mavlink/v2.0"]
 	path = mavlink/include/mavlink/v2.0
-	url = https://github.com/lhc610github/c_library_v2.git
+	url = https://github.com/lhc610github/mavlink_v2_test.git
 [submodule "NuttX"]
 	path = NuttX
 	url = https://github.com/PX4/NuttX.git
