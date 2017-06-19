@@ -198,10 +198,10 @@ MavlinkReceiver::handle_message(mavlink_message_t *msg)
 		handle_message_att_pos_mocap(msg);
 		break;
         
-	case MAVLINK_MSG_ID_WHYCON_TARGET:
+	/*case MAVLINK_MSG_ID_WHYCON_TARGET:
 		PX4_INFO("whycon received!!!");
 		handle_message_whycon_target(msg);
-        break;
+        break;*/
 
 	case MAVLINK_MSG_ID_SET_POSITION_TARGET_LOCAL_NED:
 		handle_message_set_position_target_local_ned(msg);
@@ -727,7 +727,7 @@ MavlinkReceiver::handle_message_att_pos_mocap(mavlink_message_t *msg)
 		orb_publish(ORB_ID(att_pos_mocap), _att_pos_mocap_pub, &att_pos_mocap);
 	}
 }
-void
+/*void
 MavlinkReceiver::handle_message_whycon_target(mavlink_message_t *msg)
 {
 	mavlink_whycon_target_t wc_target;
@@ -754,7 +754,7 @@ MavlinkReceiver::handle_message_whycon_target(mavlink_message_t *msg)
 	} else {
 		orb_publish(ORB_ID(whycon_target), _whycon_target_pub, &whycon_target);
 	}
-}
+}*/
 void
 MavlinkReceiver::handle_message_set_position_target_local_ned(mavlink_message_t *msg)
 {
