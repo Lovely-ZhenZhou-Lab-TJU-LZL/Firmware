@@ -1973,20 +1973,20 @@ Mavlink::task_main(int argc, char *argv[])
 	case MAVLINK_MODE_ONBOARD:
 		configure_stream("SYS_STATUS", 1.0f);
 		configure_stream("EXTENDED_SYS_STATE", 2.0f);
-		configure_stream("HIGHRES_IMU", 50.0f);
-		configure_stream("ATTITUDE", 250.0f);
+		configure_stream("HIGHRES_IMU", 5.0f);
+		configure_stream("ATTITUDE", 50.0f);
 		configure_stream("RC_CHANNELS", 20.0f);
 		configure_stream("SERVO_OUTPUT_RAW_0", 10.0f);
 		configure_stream("ALTITUDE", 10.0f);
 		configure_stream("GPS_RAW_INT", 5.0f);
-		configure_stream("ADSB_VEHICLE", 10.0f);
-		configure_stream("DISTANCE_SENSOR", 10.0f);
-		configure_stream("OPTICAL_FLOW_RAD", 10.0f);
-		configure_stream("VISION_POSITION_NED", 10.0f);
+		configure_stream("ADSB_VEHICLE", 1.0f);
+		configure_stream("DISTANCE_SENSOR", 1.0f);
+		configure_stream("OPTICAL_FLOW_RAD", 1.0f);
+		configure_stream("VISION_POSITION_NED", 1.0f);
 		configure_stream("ESTIMATOR_STATUS", 1.0f);
-		configure_stream("NAV_CONTROLLER_OUTPUT", 10.0f);
-		configure_stream("GLOBAL_POSITION_INT", 50.0f);
-		configure_stream("LOCAL_POSITION_NED", 30.0f);
+		configure_stream("NAV_CONTROLLER_OUTPUT", 1.0f);
+		configure_stream("GLOBAL_POSITION_INT", 5.0f);
+		configure_stream("LOCAL_POSITION_NED", 50.0f);
 		configure_stream("POSITION_TARGET_GLOBAL_INT", 10.0f);
 		configure_stream("ATTITUDE_TARGET", 10.0f);
 		configure_stream("HOME_POSITION", 0.5f);
@@ -1998,7 +1998,7 @@ Mavlink::task_main(int argc, char *argv[])
 		configure_stream("TIMESYNC", 10.0f);
 		configure_stream("CAMERA_CAPTURE", 2.0f);
 		//camera trigger is rate limited at the source, do not limit here
-		configure_stream("CAMERA_TRIGGER", 500.0f);
+		configure_stream("CAMERA_TRIGGER", 5.0f);
 		configure_stream("ACTUATOR_CONTROL_TARGET0", 10.0f);
 		break;
 
@@ -2020,6 +2020,8 @@ Mavlink::task_main(int argc, char *argv[])
 		break;
 
 	case MAVLINK_MODE_MAGIC:
+		configure_stream("ATTITUDE", 20.0f);
+		configure_stream("LOCAL_POSITION_NED", 20.0f);
 		//stream nothing
 		break;
 

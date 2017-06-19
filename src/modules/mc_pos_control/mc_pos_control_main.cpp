@@ -76,6 +76,9 @@
 #include <uORB/topics/vehicle_global_velocity_setpoint.h>
 #include <uORB/topics/vehicle_local_position_setpoint.h>
 #include <uORB/topics/vehicle_land_detected.h>
+#include <uORB/topics/vehicle_wt_message.h>
+#include <uORB/topics/whycon_mode.h>
+#include <uORB/topics/whycon_target.h>
 
 #include <systemlib/systemlib.h>
 #include <systemlib/mavlink_log.h>
@@ -139,6 +142,9 @@ private:
 	int		_pos_sp_triplet_sub;		/**< position setpoint triplet */
 	int		_local_pos_sp_sub;		/**< offboard local position setpoint */
 	int		_global_vel_sp_sub;		/**< offboard global velocity setpoint */
+	int		_whycon_mode_sub;		/**< lu - whycon mode */
+	int		_whycon_target_sub;		/**< lu - whycon target */
+	int		_vehicle_wt_message_sub;		/**< lu - whycon message */
 
 	orb_advert_t	_att_sp_pub;			/**< attitude setpoint publication */
 	orb_advert_t	_local_pos_sp_pub;		/**< vehicle local position setpoint publication */
@@ -157,6 +163,10 @@ private:
 	struct position_setpoint_triplet_s		_pos_sp_triplet;	/**< vehicle global position setpoint triplet */
 	struct vehicle_local_position_setpoint_s	_local_pos_sp;		/**< vehicle local position setpoint */
 	struct vehicle_global_velocity_setpoint_s	_global_vel_sp;		/**< vehicle global velocity setpoint */
+
+    struct whycon_mode_s _whycon_mode;
+    struct whycon_target_s _whycon_target;
+    struct vehicle_wt_message_s _vehicle_wt_message;
 
 	control::BlockParamFloat _manual_thr_min;
 	control::BlockParamFloat _manual_thr_max;
@@ -249,6 +259,7 @@ private:
 	bool _alt_hold_engaged;
 	bool _run_pos_control;
 	bool _run_alt_control;
+    bool wt_without_timeout; /** lu whycon check timeout **/
 
 	math::Vector<3> _pos;
 	math::Vector<3> _pos_sp;
@@ -368,6 +379,9 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_local_pos_sub(-1),
 	_pos_sp_triplet_sub(-1),
 	_global_vel_sp_sub(-1),
+    _whycon_mode_sub(-1),
+    _whycon_target_sub(-1),
+    _vehicle_wt_message_sub(-1),
 
 	/* publications */
 	_att_sp_pub(nullptr),
@@ -385,6 +399,9 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_pos_sp_triplet{},
 	_local_pos_sp{},
 	_global_vel_sp{},
+    _whycon_mode{},
+    _whycon_target{},
+    _vehicle_wt_message{},
 	_manual_thr_min(this, "MANTHR_MIN"),
 	_manual_thr_max(this, "MANTHR_MAX"),
 	_vel_x_deriv(this, "VELD"),
@@ -400,6 +417,7 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_alt_hold_engaged(false),
 	_run_pos_control(true),
 	_run_alt_control(true),
+    wt_without_timeout(false),
 	_yaw(0.0f),
 	_in_landing(false),
 	_lnd_reached_ground(false),
@@ -691,6 +709,24 @@ MulticopterPositionControl::poll_subscriptions()
 	if (updated) {
 		orb_copy(ORB_ID(vehicle_local_position), _local_pos_sub, &_local_pos);
 	}
+
+	orb_check(_whycon_mode_sub, &updated);
+
+	if (updated) {
+		orb_copy(ORB_ID(whycon_mode), _whycon_mode_sub, &_whycon_mode);
+	}
+
+	orb_check(_whycon_target_sub, &updated);
+
+	if (updated) {
+		orb_copy(ORB_ID(whycon_target), _whycon_target_sub, &_whycon_target);
+	}
+
+	orb_check(_vehicle_wt_message_sub, &updated);
+
+	if (updated) {
+		orb_copy(ORB_ID(vehicle_wt_message), _vehicle_wt_message_sub, &_vehicle_wt_message);
+	}
 }
 
 float
@@ -911,12 +947,21 @@ MulticopterPositionControl::control_offboard(float dt)
 	if (updated) {
 		orb_copy(ORB_ID(position_setpoint_triplet), _pos_sp_triplet_sub, &_pos_sp_triplet);
 	}
-
+    float lenth_x;
+    float lenth_y;
 	if (_pos_sp_triplet.current.valid) {
 		if (_control_mode.flag_control_position_enabled && _pos_sp_triplet.current.position_valid) {
 			/* control position */
-			_pos_sp(0) = _pos_sp_triplet.current.x;
-			_pos_sp(1) = _pos_sp_triplet.current.y;
+            /* lu  whycon target follow*/
+            if (_whycon_mode.ofwhycon_enable && _whycon_mode.whycon_data_valid && wt_without_timeout){
+                lenth_x = fabs(_vehicle_wt_message.x);
+                lenth_y = fabs(_vehicle_wt_message.y);
+                _pos_sp(0) = lenth_x < 1.2f ? _vehicle_wt_message.x : (_vehicle_wt_message.x/lenth_x*1.2f);
+                _pos_sp(1) = lenth_y < 1.2f ? _vehicle_wt_message.y : (_vehicle_wt_message.y/lenth_y*1.2f);
+            } else {
+                _pos_sp(0) = _pos_sp_triplet.current.x;
+                _pos_sp(1) = _pos_sp_triplet.current.y;
+            }
 
 		} else if (_control_mode.flag_control_velocity_enabled && _pos_sp_triplet.current.velocity_valid) {
 			/* control velocity */
@@ -939,13 +984,25 @@ MulticopterPositionControl::control_offboard(float dt)
 
 		if (_control_mode.flag_control_altitude_enabled && _pos_sp_triplet.current.alt_valid) {
 			/* control altitude as it is enabled */
-			_pos_sp(2) = _pos_sp_triplet.current.z;
-			_run_alt_control = true;
+            /* lu  whycon target follow*/
+            if (_whycon_mode.ofwhycon_enable && _whycon_mode.whycon_data_valid && wt_without_timeout){
+                _pos_sp(2) = (_vehicle_wt_message.z - 1.0f) > -1.2f ?  (_vehicle_wt_message.z - 1.0f) : -1.2f;
+			    _run_alt_control = true;
+            } else {
+                _pos_sp(2) = _pos_sp_triplet.current.z;
+			    _run_alt_control = true;
+            }
 
 		} else if (_control_mode.flag_control_altitude_enabled && _pos_sp_triplet.current.position_valid) {
 			/* control altitude because full position control is enabled */
-			_pos_sp(2) = _pos_sp_triplet.current.z;
-			_run_alt_control = true;
+            /* lu  whycon target follow*/
+            if (_whycon_mode.ofwhycon_enable && _whycon_mode.whycon_data_valid && wt_without_timeout){
+                _pos_sp(2) = (_vehicle_wt_message.z - 1.2f) > -1.5f ?  (_vehicle_wt_message.z - 1.2f) : -1.5f;
+			    _run_alt_control = true;
+            } else {
+                _pos_sp(2) = _pos_sp_triplet.current.z;
+			    _run_alt_control = true;
+            }
 
 		} else if (_control_mode.flag_control_climb_rate_enabled && _pos_sp_triplet.current.velocity_valid) {
 			/* reset alt setpoint to current altitude if needed */
@@ -1239,7 +1296,9 @@ MulticopterPositionControl::task_main()
 	_pos_sp_triplet_sub = orb_subscribe(ORB_ID(position_setpoint_triplet));
 	_local_pos_sp_sub = orb_subscribe(ORB_ID(vehicle_local_position_setpoint));
 	_global_vel_sp_sub = orb_subscribe(ORB_ID(vehicle_global_velocity_setpoint));
-
+	_whycon_mode_sub = orb_subscribe(ORB_ID(whycon_mode));		/**< lu - whycon mode */
+	_whycon_target_sub = orb_subscribe(ORB_ID(whycon_target));		/**< lu - whycon target */
+	_vehicle_wt_message_sub = orb_subscribe(ORB_ID(vehicle_wt_message));		/**< lu - whycon message */
 
 	parameters_update(true);
 
@@ -1298,7 +1357,14 @@ MulticopterPositionControl::task_main()
 		hrt_abstime t = hrt_absolute_time();
 		float dt = t_prev != 0 ? (t - t_prev) * 0.000001f : 0.0f;
 		t_prev = t;
-
+        if ((t < _whycon_mode.timestamp + 500000)&&(t < _whycon_target.timestamp + 500000)&&(t < _vehicle_wt_message.timestamp +500000))
+        {
+            wt_without_timeout = true;
+        }
+        else
+        {
+            wt_without_timeout = false;
+        }
 		// set dt for control blocks
 		setDt(dt);
 

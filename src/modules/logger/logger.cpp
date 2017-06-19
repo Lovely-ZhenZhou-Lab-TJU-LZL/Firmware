@@ -557,6 +557,7 @@ void Logger::add_default_topics()
 	add_topic("vehicle_land_detected");
 	add_topic("vehicle_wt_message");
 	add_topic("whycon_target");
+	add_topic("whycon_mode");
 }
 
 int Logger::add_topics_from_file(const char *fname)

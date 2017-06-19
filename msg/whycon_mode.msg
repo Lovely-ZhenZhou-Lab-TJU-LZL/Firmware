@@ -1,0 +1,2 @@
+bool ofwhycon_enable
+bool whycon_data_valid

@@ -123,6 +123,7 @@ set(msg_file_names
 	vehicle_roi.msg
 	whycon_target.msg
 	vehicle_wt_message.msg
+	whycon_mode.msg
 	)
 
 # Get absolute paths
