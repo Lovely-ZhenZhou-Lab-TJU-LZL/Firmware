@@ -49,6 +49,7 @@
 #include <uORB/uORB.h>
 #include <uORB/topics/sensor_combined.h>
 #include <uORB/topics/vehicle_attitude.h>
+#include <uORB/topics/ca_traject.h>
 
 __EXPORT int px4_simple_app_main(int argc, char *argv[]);
 
@@ -58,17 +59,20 @@ int px4_simple_app_main(int argc, char *argv[])
 
 	/* subscribe to sensor_combined topic */
 	int sensor_sub_fd = orb_subscribe(ORB_ID(sensor_combined));
+	int ca_traject_sub_fd = orb_subscribe(ORB_ID(ca_traject));
 	/* limit the update rate to 5 Hz */
 	orb_set_interval(sensor_sub_fd, 200);
+	orb_set_interval(ca_traject_sub_fd, 200);
 
 	/* advertise attitude topic */
 	struct vehicle_attitude_s att;
 	memset(&att, 0, sizeof(att));
-	orb_advert_t att_pub = orb_advertise(ORB_ID(vehicle_attitude), &att);
+	//orb_advert_t att_pub = orb_advertise(ORB_ID(vehicle_attitude), &att);
 
 	/* one could wait for multiple topics with this technique, just using one here */
 	px4_pollfd_struct_t fds[] = {
 		{ .fd = sensor_sub_fd,   .events = POLLIN },
+		{ .fd = ca_traject_sub_fd,   .events = POLLIN },
 		/* there could be more file descriptors here, in the form like:
 		 * { .fd = other_sub_fd,   .events = POLLIN },
 		 */
@@ -109,16 +113,25 @@ int px4_simple_app_main(int argc, char *argv[])
 				/* set att and publish this information for other apps
 				 the following does not have any meaning, it's just an example
 				*/
-				att.q[0] = raw.accelerometer_m_s2[0];
-				att.q[1] = raw.accelerometer_m_s2[1];
-				att.q[2] = raw.accelerometer_m_s2[2];
-
-				orb_publish(ORB_ID(vehicle_attitude), att_pub, &att);
 			}
 
 			/* there could be more file descriptors here, in the form like:
 			 * if (fds[1..n].revents & POLLIN) {}
 			 */
+			if (fds[1].revents & POLLIN) {
+				/* obtained data for the first file descriptor */
+				struct ca_traject_s raw1;
+				/* copy sensors raw data into local buffer */
+				orb_copy(ORB_ID(ca_traject), ca_traject_sub_fd, &raw1);
+				PX4_INFO("Traject:\t%d\t%d\t%d",
+					 raw1.num_keyframe,
+					 raw1.index_keyframe,
+					 raw1.order_p_1);
+
+				/* set att and publish this information for other apps
+				 the following does not have any meaning, it's just an example
+				*/
+			}
 		}
 	}
 

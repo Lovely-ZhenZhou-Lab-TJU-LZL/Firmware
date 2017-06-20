@@ -75,6 +75,9 @@ SubscriberExample::SubscriberExample() :
 	/* Yet antoher class method */
 	_n.subscribe<px4_parameter_update>(&SubscriberExample::parameter_update_callback, this, 1000);
 
+	/* Yet antoher class method */
+	//_n.subscribe<px4_ca_trajcet>(&SubscriberExample::ca_traject_callback, this, 1000);
+
 	PX4_INFO("subscribed");
 }
 
@@ -105,3 +108,13 @@ void SubscriberExample::parameter_update_callback(const px4_parameter_update &ms
 	_p_test_float.update();
 	PX4_INFO("Param SUB_TESTF = %.3f", (double)_p_test_float.get());
 }
+
+//void SubscriberExample::ca_traject_callback(const px4_ca_trajcet &msg)
+//{
+	//PX4_INFO("ca_traject_callback (method): [%" PRIu64 "]",
+		 //msg.data().timestamp);
+	//PX4_INFO("ca_traject.num_keyframe:%d ",
+		 //msg.data().num_keyframe);
+	//PX4_INFO("ca_traject.index:%d ",
+		 //msg.data().index_keyframe);
+//}

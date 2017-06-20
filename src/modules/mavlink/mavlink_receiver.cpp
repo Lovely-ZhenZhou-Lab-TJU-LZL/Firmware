@@ -202,6 +202,9 @@ MavlinkReceiver::handle_message(mavlink_message_t *msg)
 		PX4_INFO("whycon received!!!");
 		handle_message_whycon_target(msg);
         break;*/
+    case MAVLINK_MSG_ID_CA_TRAJECT:
+		handle_message_ca_traject_msg(msg);
+        break;
 
 	case MAVLINK_MSG_ID_SET_POSITION_TARGET_LOCAL_NED:
 		handle_message_set_position_target_local_ned(msg);
@@ -727,34 +730,39 @@ MavlinkReceiver::handle_message_att_pos_mocap(mavlink_message_t *msg)
 		orb_publish(ORB_ID(att_pos_mocap), _att_pos_mocap_pub, &att_pos_mocap);
 	}
 }
-/*void
-MavlinkReceiver::handle_message_whycon_target(mavlink_message_t *msg)
+void
+MavlinkReceiver::handle_message_ca_traject_msg(mavlink_message_t *msg)
 {
-	mavlink_whycon_target_t wc_target;
-	mavlink_msg_whycon_target_decode(msg, &wc_target);
+	mavlink_ca_traject_t traj;
+	mavlink_msg_ca_traject_decode(msg, &traj);
 	
-	struct whycon_target_s whycon_target = {};
-	whycon_target.timestamp = sync_stamp(wc_target.time_usec);
-	whycon_target.timestamp_received = hrt_absolute_time();
+	struct ca_traject_s f;
+    memset(&f, 0, sizeof(f));
+	f.timestamp = hrt_absolute_time();//sync_stamp(wc_target.time_usec);
+    f.PC_time_usec = traj.time_usec;
 
-	whycon_target.id = wc_target.target_id;
-	whycon_target.x = wc_target.pos_x;
-	whycon_target.y = wc_target.pos_y;
-	whycon_target.z = wc_target.pos_z;
-	whycon_target.q[0] = wc_target.orient_w;
-	whycon_target.q[1] = wc_target.orient_x;
-	whycon_target.q[2] = wc_target.orient_y;
-	whycon_target.q[3] = wc_target.orient_z;
+    f.t[0] = traj.t[0]; //start time
+    f.t[1] = traj.t[1]; //finish time
+    for (int i=0 ; i< 7; i++)
+    {
+        f.trajectory_coefficient_x[i] = traj.trajectory_coefficient_x[i];
+        f.trajectory_coefficient_y[i] = traj.trajectory_coefficient_y[i];
+        f.trajectory_coefficient_z[i] = traj.trajectory_coefficient_z[i];
+        f.trajectory_coefficient_r[i] = traj.trajectory_coefficient_r[i];
+    }
+    f.num_keyframe = traj.num_keyframe;
+    f.index_keyframe = traj.index_keyframe;
+    f.order_p_1 = traj.order_p_1;
     //printf("whycon_target   id :%d \n",whycon_target.id);
     //printf("whycon_target q:   %.2f  %.2f  %.2f  %.2f \n",(double)whycon_target.q[0],(double)whycon_target.q[1],(double)whycon_target.q[2],(double)whycon_target.q[3]);
     //printf("whycon_target pos: %.2f  %.2f  %.2f\n",(double)whycon_target.x,(double)whycon_target.y,(double)whycon_target.z);
-	if (_whycon_target_pub == nullptr) {
-		_whycon_target_pub = orb_advertise(ORB_ID(whycon_target), &whycon_target);
+	if (_ca_traj_msg_pub == nullptr) {
+		_ca_traj_msg_pub = orb_advertise(ORB_ID(ca_traject), &f);
 
 	} else {
-		orb_publish(ORB_ID(whycon_target), _whycon_target_pub, &whycon_target);
+		orb_publish(ORB_ID(ca_traject),_ca_traj_msg_pub, &f);
 	}
-}*/
+}
 void
 MavlinkReceiver::handle_message_set_position_target_local_ned(mavlink_message_t *msg)
 {

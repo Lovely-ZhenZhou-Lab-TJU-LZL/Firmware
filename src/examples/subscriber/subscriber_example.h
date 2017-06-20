@@ -63,5 +63,6 @@ protected:
 	void rc_channels_callback(const px4_rc_channels &msg);
 	void vehicle_attitude_callback(const px4_vehicle_attitude &msg);
 	void parameter_update_callback(const px4_parameter_update &msg);
+	//void ca_traject_callback(const px4_ca_trajcet &msg);
 
 };

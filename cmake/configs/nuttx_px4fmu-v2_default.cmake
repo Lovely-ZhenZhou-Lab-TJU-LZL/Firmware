@@ -168,7 +168,7 @@ set(config_module_list
 	#examples/math_demo
 	# Tutorial code from
 	# https://px4.io/dev/px4_simple_app
-	#examples/px4_simple_app
+	examples/px4_simple_app
 
 	# Tutorial code from
 	# https://px4.io/dev/daemon
@@ -177,6 +177,8 @@ set(config_module_list
 	# Tutorial code from
 	# https://px4.io/dev/debug_values
 	#examples/px4_mavlink_debug
+
+    #examples/subscriber
 
 	# Tutorial code from
 	# https://px4.io/dev/example_fixedwing_control
