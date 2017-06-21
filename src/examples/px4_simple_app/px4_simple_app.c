@@ -60,13 +60,26 @@ int px4_simple_app_main(int argc, char *argv[])
 	/* subscribe to sensor_combined topic */
 	//int sensor_sub_fd = orb_subscribe(ORB_ID(sensor_combined));
 	int ca_traject_sub_fd = orb_subscribe(ORB_ID(ca_traject));
+
+    /* traject struct */
+    bool receive_flag[10];
+    float t[11];
+    float traject[10][7][4];
+    int num_keyframe = 10;
+    int traject_order;
+    traject_order = 8;
+    bool all_done = false;
+
+    for (int i = 0; i <10; i++) {
+        receive_flag[i] = false;
+    }
 	/* limit the update rate to 5 Hz */
 	//orb_set_interval(sensor_sub_fd, 200);
 	//orb_set_interval(ca_traject_sub_fd, 200);
 
 	/* advertise attitude topic */
-	struct vehicle_attitude_s att;
-	memset(&att, 0, sizeof(att));
+	//struct vehicle_attitude_s att;
+	//memset(&att, 0, sizeof(att));
 	//orb_advert_t att_pub = orb_advertise(ORB_ID(vehicle_attitude), &att);
 
 	/* one could wait for multiple topics with this technique, just using one here */
@@ -80,7 +93,7 @@ int px4_simple_app_main(int argc, char *argv[])
 
 	int error_counter = 0;
 
-	for (int i = 0; i < 15; i++) {
+	for (int i = 0; i < 15 && !all_done; i++) {
 		/* wait for sensor update of 1 file descriptor for 1000 ms (1 second) */
 		int poll_ret = px4_poll(fds, 1, 1000);
 
@@ -127,9 +140,16 @@ int px4_simple_app_main(int argc, char *argv[])
 					 raw1.num_keyframe,
 					 raw1.order_p_1);
 				PX4_INFO("     phase %d :",raw1.index_keyframe);
+                receive_flag[raw1.index_keyframe - 1] = true;
+                num_keyframe = raw1.num_keyframe;
+                traject_order = raw1.order_p_1 - 1;
+
 				PX4_INFO("     start time %.2f finish time %.2f",
                      (double)raw1.t[0],
                      (double)raw1.t[1]);
+                t[raw1.index_keyframe - 1] = raw1.t[0];
+                t[raw1.index_keyframe] = raw1.t[1];
+
 				PX4_INFO("        x: [%.2f %.2f %.2f %.2f %.2f %.2f %.2f]",
                     (double)raw1.trajectory_coefficient_x[0],
                     (double)raw1.trajectory_coefficient_x[1],
@@ -138,6 +158,11 @@ int px4_simple_app_main(int argc, char *argv[])
                     (double)raw1.trajectory_coefficient_x[4],
                     (double)raw1.trajectory_coefficient_x[5],
                     (double)raw1.trajectory_coefficient_x[6]);
+                for (int k=0 ; k<7 ;k++)
+                {
+                    traject[raw1.index_keyframe - 1][k][0] = raw1.trajectory_coefficient_x[k];
+                }
+
 				PX4_INFO("        y: [%.2f %.2f %.2f %.2f %.2f %.2f %.2f]",
                     (double)raw1.trajectory_coefficient_y[0],
                     (double)raw1.trajectory_coefficient_y[1],
@@ -146,6 +171,11 @@ int px4_simple_app_main(int argc, char *argv[])
                     (double)raw1.trajectory_coefficient_y[4],
                     (double)raw1.trajectory_coefficient_y[5],
                     (double)raw1.trajectory_coefficient_y[6]);
+                for (int k=0 ; k<7 ;k++)
+                {
+                    traject[raw1.index_keyframe - 1][k][1] = raw1.trajectory_coefficient_y[k];
+                }
+
 				PX4_INFO("        z: [%.2f %.2f %.2f %.2f %.2f %.2f %.2f]",
                     (double)raw1.trajectory_coefficient_z[0],
                     (double)raw1.trajectory_coefficient_z[1],
@@ -154,6 +184,11 @@ int px4_simple_app_main(int argc, char *argv[])
                     (double)raw1.trajectory_coefficient_z[4],
                     (double)raw1.trajectory_coefficient_z[5],
                     (double)raw1.trajectory_coefficient_z[6]);
+                for (int k=0 ; k<7 ;k++)
+                {
+                    traject[raw1.index_keyframe - 1][k][2] = raw1.trajectory_coefficient_z[k];
+                }
+
 				PX4_INFO("      yaw: [%.2f %.2f %.2f %.2f %.2f %.2f %.2f]",
                     (double)raw1.trajectory_coefficient_r[0],
                     (double)raw1.trajectory_coefficient_r[1],
@@ -162,14 +197,31 @@ int px4_simple_app_main(int argc, char *argv[])
                     (double)raw1.trajectory_coefficient_r[4],
                     (double)raw1.trajectory_coefficient_r[5],
                     (double)raw1.trajectory_coefficient_r[6]);
+                for (int k=0 ; k<7 ;k++)
+                {
+                    traject[raw1.index_keyframe - 1][k][3] = raw1.trajectory_coefficient_r[k];
+                }
 
+                /* check for receive traject done*/
+                for (int j = 0; j<num_keyframe; j++)
+                {
+                    if(!receive_flag[j])
+                    {
+                        all_done = false;
+                        break;
+                    }
+                    if(j == (num_keyframe-1))
+                        all_done = true;
+                }
 				/* set att and publish this information for other apps
 				 the following does not have any meaning, it's just an example
 				*/
 			}
 		}
 	}
-
+    PX4_INFO("all traject receive done :\n phase: %d order: %d ",num_keyframe,traject_order);
+    PX4_INFO("t: %.2f traject: %.2f",(double)t[0],(double)traject[0][1][3]);
+    
 	PX4_INFO("exiting");
 
 	return 0;
