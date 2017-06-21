@@ -119,6 +119,7 @@ MavlinkReceiver::MavlinkReceiver(Mavlink *parent) :
 	_pos_sp_triplet_pub(nullptr),
 	_att_pos_mocap_pub(nullptr),
 	_whycon_target_pub(nullptr),
+	_ca_traj_msg_pub(nullptr),
 	_vision_position_pub(nullptr),
 	_telemetry_status_pub(nullptr),
 	_rc_pub(nullptr),

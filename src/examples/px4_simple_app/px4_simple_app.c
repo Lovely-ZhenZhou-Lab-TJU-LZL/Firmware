@@ -58,11 +58,11 @@ int px4_simple_app_main(int argc, char *argv[])
 	PX4_INFO("Hello Sky!");
 
 	/* subscribe to sensor_combined topic */
-	int sensor_sub_fd = orb_subscribe(ORB_ID(sensor_combined));
+	//int sensor_sub_fd = orb_subscribe(ORB_ID(sensor_combined));
 	int ca_traject_sub_fd = orb_subscribe(ORB_ID(ca_traject));
 	/* limit the update rate to 5 Hz */
-	orb_set_interval(sensor_sub_fd, 200);
-	orb_set_interval(ca_traject_sub_fd, 200);
+	//orb_set_interval(sensor_sub_fd, 200);
+	//orb_set_interval(ca_traject_sub_fd, 200);
 
 	/* advertise attitude topic */
 	struct vehicle_attitude_s att;
@@ -71,7 +71,7 @@ int px4_simple_app_main(int argc, char *argv[])
 
 	/* one could wait for multiple topics with this technique, just using one here */
 	px4_pollfd_struct_t fds[] = {
-		{ .fd = sensor_sub_fd,   .events = POLLIN },
+		//{ .fd = sensor_sub_fd,   .events = POLLIN },
 		{ .fd = ca_traject_sub_fd,   .events = POLLIN },
 		/* there could be more file descriptors here, in the form like:
 		 * { .fd = other_sub_fd,   .events = POLLIN },
@@ -80,7 +80,7 @@ int px4_simple_app_main(int argc, char *argv[])
 
 	int error_counter = 0;
 
-	for (int i = 0; i < 5; i++) {
+	for (int i = 0; i < 15; i++) {
 		/* wait for sensor update of 1 file descriptor for 1000 ms (1 second) */
 		int poll_ret = px4_poll(fds, 1, 1000);
 
@@ -102,31 +102,66 @@ int px4_simple_app_main(int argc, char *argv[])
 
 			if (fds[0].revents & POLLIN) {
 				/* obtained data for the first file descriptor */
-				struct sensor_combined_s raw;
+				//struct sensor_combined_s raw;
 				/* copy sensors raw data into local buffer */
-				orb_copy(ORB_ID(sensor_combined), sensor_sub_fd, &raw);
-				PX4_INFO("Accelerometer:\t%8.4f\t%8.4f\t%8.4f",
-					 (double)raw.accelerometer_m_s2[0],
-					 (double)raw.accelerometer_m_s2[1],
-					 (double)raw.accelerometer_m_s2[2]);
+				//orb_copy(ORB_ID(sensor_combined), sensor_sub_fd, &raw);
+				//PX4_INFO("Accelerometer:\t%8.4f\t%8.4f\t%8.4f",
+					 ////(double)raw.accelerometer_m_s2[0],
+					 //(double)raw.accelerometer_m_s2[1],
+					 //(double)raw.accelerometer_m_s2[2]);
 
 				/* set att and publish this information for other apps
 				 the following does not have any meaning, it's just an example
 				*/
-			}
+			//}
 
 			/* there could be more file descriptors here, in the form like:
 			 * if (fds[1..n].revents & POLLIN) {}
 			 */
-			if (fds[1].revents & POLLIN) {
+			//if (fds[1].revents & POLLIN) {
 				/* obtained data for the first file descriptor */
 				struct ca_traject_s raw1;
 				/* copy sensors raw data into local buffer */
 				orb_copy(ORB_ID(ca_traject), ca_traject_sub_fd, &raw1);
-				PX4_INFO("Traject:\t%d\t%d\t%d",
+				PX4_INFO("Traject:\n  total: %d order+1: %d",
 					 raw1.num_keyframe,
-					 raw1.index_keyframe,
 					 raw1.order_p_1);
+				PX4_INFO("     phase %d :",raw1.index_keyframe);
+				PX4_INFO("     start time %.2f finish time %.2f",
+                     (double)raw1.t[0],
+                     (double)raw1.t[1]);
+				PX4_INFO("        x: [%.2f %.2f %.2f %.2f %.2f %.2f %.2f]",
+                    (double)raw1.trajectory_coefficient_x[0],
+                    (double)raw1.trajectory_coefficient_x[1],
+                    (double)raw1.trajectory_coefficient_x[2],
+                    (double)raw1.trajectory_coefficient_x[3],
+                    (double)raw1.trajectory_coefficient_x[4],
+                    (double)raw1.trajectory_coefficient_x[5],
+                    (double)raw1.trajectory_coefficient_x[6]);
+				PX4_INFO("        y: [%.2f %.2f %.2f %.2f %.2f %.2f %.2f]",
+                    (double)raw1.trajectory_coefficient_y[0],
+                    (double)raw1.trajectory_coefficient_y[1],
+                    (double)raw1.trajectory_coefficient_y[2],
+                    (double)raw1.trajectory_coefficient_y[3],
+                    (double)raw1.trajectory_coefficient_y[4],
+                    (double)raw1.trajectory_coefficient_y[5],
+                    (double)raw1.trajectory_coefficient_y[6]);
+				PX4_INFO("        z: [%.2f %.2f %.2f %.2f %.2f %.2f %.2f]",
+                    (double)raw1.trajectory_coefficient_z[0],
+                    (double)raw1.trajectory_coefficient_z[1],
+                    (double)raw1.trajectory_coefficient_z[2],
+                    (double)raw1.trajectory_coefficient_z[3],
+                    (double)raw1.trajectory_coefficient_z[4],
+                    (double)raw1.trajectory_coefficient_z[5],
+                    (double)raw1.trajectory_coefficient_z[6]);
+				PX4_INFO("      yaw: [%.2f %.2f %.2f %.2f %.2f %.2f %.2f]",
+                    (double)raw1.trajectory_coefficient_r[0],
+                    (double)raw1.trajectory_coefficient_r[1],
+                    (double)raw1.trajectory_coefficient_r[2],
+                    (double)raw1.trajectory_coefficient_r[3],
+                    (double)raw1.trajectory_coefficient_r[4],
+                    (double)raw1.trajectory_coefficient_r[5],
+                    (double)raw1.trajectory_coefficient_r[6]);
 
 				/* set att and publish this information for other apps
 				 the following does not have any meaning, it's just an example

@@ -81,7 +81,7 @@
 #include <uORB/topics/whycon_target.h>
 #include <uORB/topics/ca_traject.h>
 
-#include <v1.0/common/mavlink_msg_ca_traject.h>
+#include <v2.0/common/mavlink_msg_ca_traject.h>
 
 #include "mavlink_ftp.h"
 #define PX4_EPOCH_SECS 1234567890ULL
