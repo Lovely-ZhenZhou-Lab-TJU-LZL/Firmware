@@ -740,7 +740,8 @@ MavlinkReceiver::handle_message_ca_traject_msg(mavlink_message_t *msg)
 	struct ca_traject_s f;
     memset(&f, 0, sizeof(f));
 	f.timestamp = hrt_absolute_time();//sync_stamp(wc_target.time_usec);
-    f.PC_time_usec = traj.time_usec;
+    f.PC_time_usec = traj.PC_time_usec;
+    f.onboard_PC_time_usec = traj.time_usec;
 
     f.t[0] = traj.t[0]; //start time
     f.t[1] = traj.t[1]; //finish time

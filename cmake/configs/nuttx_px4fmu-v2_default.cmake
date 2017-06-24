@@ -40,13 +40,13 @@ set(config_module_list
 	#drivers/frsky_telemetry
 	modules/sensors
 	#drivers/mkblctrl
-	drivers/px4flow
+    drivers/px4flow
 	#drivers/oreoled
 	#drivers/vmount
 	drivers/pwm_input
-	drivers/camera_trigger
+    #drivers/camera_trigger
 	drivers/bst
-	drivers/snapdragon_rc_pwm
+    #drivers/snapdragon_rc_pwm
 	drivers/lis3mdl
 
 	#
@@ -168,11 +168,11 @@ set(config_module_list
 	#examples/math_demo
 	# Tutorial code from
 	# https://px4.io/dev/px4_simple_app
-	examples/px4_simple_app
+    examples/px4_simple_app
 
 	# Tutorial code from
 	# https://px4.io/dev/daemon
-	#examples/px4_daemon_app
+	examples/px4_daemon_app
 
 	# Tutorial code from
 	# https://px4.io/dev/debug_values

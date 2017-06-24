@@ -1,4 +1,5 @@
 uint64 PC_time_usec                 # Receive timestamp in autopilot
+uint64 onboard_PC_time_usec                 # Receive timestamp in autopilot
 float32[2] t                        # Start time and stop time
 float32[7] trajectory_coefficient_x # X-axis trajectory coefficient
 float32[7] trajectory_coefficient_y # Y-axis trajectory coefficient

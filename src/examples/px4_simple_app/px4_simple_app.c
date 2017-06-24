@@ -39,12 +39,17 @@
  */
 
 #include <px4_config.h>
+#include <px4_defines.h>
 #include <px4_tasks.h>
 #include <px4_posix.h>
-#include <unistd.h>
 #include <stdio.h>
-#include <poll.h>
+#include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <math.h>
+#include <poll.h>
 
 #include <uORB/uORB.h>
 #include <uORB/topics/sensor_combined.h>
@@ -62,20 +67,26 @@ int px4_simple_app_main(int argc, char *argv[])
 	int ca_traject_sub_fd = orb_subscribe(ORB_ID(ca_traject));
 
     /* traject struct */
-    bool receive_flag[10];
-    float t[11];
-    float traject[10][7][4];
-    int num_keyframe = 10;
-    int traject_order;
-    traject_order = 8;
-    bool all_done = false;
+    struct trajectory{
+        bool receive_flag[10];
+        float t[11];
+        float traject[10][7][4];
+        int num_keyframe;
+        int traject_order;
+        bool all_done;
+    } _traject;
+
+    memset(&_traject,0,sizeof(struct trajectory));
 
     for (int i = 0; i <10; i++) {
-        receive_flag[i] = false;
+        _traject.receive_flag[i] = false;
     }
+    _traject.all_done = false;
+    _traject.num_keyframe = 10;
+    
 	/* limit the update rate to 5 Hz */
 	//orb_set_interval(sensor_sub_fd, 200);
-	//orb_set_interval(ca_traject_sub_fd, 200);
+	orb_set_interval(ca_traject_sub_fd, 200);
 
 	/* advertise attitude topic */
 	//struct vehicle_attitude_s att;
@@ -83,24 +94,27 @@ int px4_simple_app_main(int argc, char *argv[])
 	//orb_advert_t att_pub = orb_advertise(ORB_ID(vehicle_attitude), &att);
 
 	/* one could wait for multiple topics with this technique, just using one here */
-	px4_pollfd_struct_t fds[] = {
-		//{ .fd = sensor_sub_fd,   .events = POLLIN },
-		{ .fd = ca_traject_sub_fd,   .events = POLLIN },
+	px4_pollfd_struct_t fds[1];
+		fds[0].fd = ca_traject_sub_fd;
+        fds[0].events = POLLIN;
 		/* there could be more file descriptors here, in the form like:
 		 * { .fd = other_sub_fd,   .events = POLLIN },
 		 */
-	};
 
 	int error_counter = 0;
+	PX4_INFO("Start");
 
-	for (int i = 0; i < 15 && !all_done; i++) {
+	for (int i = 0; i < 15 ; i++) {
 		/* wait for sensor update of 1 file descriptor for 1000 ms (1 second) */
-		int poll_ret = px4_poll(fds, 1, 1000);
+			PX4_INFO("test1");
+		int poll_ret = px4_poll(&fds[0], 1, 100);
+			PX4_INFO("test");
 
 		/* handle the poll result */
 		if (poll_ret == 0) {
 			/* this means none of our providers is giving us data */
 			PX4_ERR("Got no data within a second");
+			PX4_INFO("Got no data within a second");
 
 		} else if (poll_ret < 0) {
 			/* this is seriously bad - should be an emergency */
@@ -114,41 +128,22 @@ int px4_simple_app_main(int argc, char *argv[])
 		} else {
 
 			if (fds[0].revents & POLLIN) {
-				/* obtained data for the first file descriptor */
-				//struct sensor_combined_s raw;
-				/* copy sensors raw data into local buffer */
-				//orb_copy(ORB_ID(sensor_combined), sensor_sub_fd, &raw);
-				//PX4_INFO("Accelerometer:\t%8.4f\t%8.4f\t%8.4f",
-					 ////(double)raw.accelerometer_m_s2[0],
-					 //(double)raw.accelerometer_m_s2[1],
-					 //(double)raw.accelerometer_m_s2[2]);
-
-				/* set att and publish this information for other apps
-				 the following does not have any meaning, it's just an example
-				*/
-			//}
-
-			/* there could be more file descriptors here, in the form like:
-			 * if (fds[1..n].revents & POLLIN) {}
-			 */
-			//if (fds[1].revents & POLLIN) {
-				/* obtained data for the first file descriptor */
-				struct ca_traject_s raw1;
-				/* copy sensors raw data into local buffer */
-				orb_copy(ORB_ID(ca_traject), ca_traject_sub_fd, &raw1);
+				
+                struct ca_traject_s raw1;
+                orb_copy(ORB_ID(ca_traject), ca_traject_sub_fd, &raw1);
 				PX4_INFO("Traject:\n  total: %d order+1: %d",
 					 raw1.num_keyframe,
 					 raw1.order_p_1);
 				PX4_INFO("     phase %d :",raw1.index_keyframe);
-                receive_flag[raw1.index_keyframe - 1] = true;
-                num_keyframe = raw1.num_keyframe;
-                traject_order = raw1.order_p_1 - 1;
+                _traject.receive_flag[raw1.index_keyframe - 1] = true;
+                _traject.num_keyframe = raw1.num_keyframe;
+                _traject.traject_order = raw1.order_p_1 - 1;
 
 				PX4_INFO("     start time %.2f finish time %.2f",
                      (double)raw1.t[0],
                      (double)raw1.t[1]);
-                t[raw1.index_keyframe - 1] = raw1.t[0];
-                t[raw1.index_keyframe] = raw1.t[1];
+                _traject.t[raw1.index_keyframe - 1] = raw1.t[0];
+                _traject.t[raw1.index_keyframe] = raw1.t[1];
 
 				PX4_INFO("        x: [%.2f %.2f %.2f %.2f %.2f %.2f %.2f]",
                     (double)raw1.trajectory_coefficient_x[0],
@@ -160,7 +155,7 @@ int px4_simple_app_main(int argc, char *argv[])
                     (double)raw1.trajectory_coefficient_x[6]);
                 for (int k=0 ; k<7 ;k++)
                 {
-                    traject[raw1.index_keyframe - 1][k][0] = raw1.trajectory_coefficient_x[k];
+                    _traject.traject[raw1.index_keyframe - 1][k][0] = raw1.trajectory_coefficient_x[k];
                 }
 
 				PX4_INFO("        y: [%.2f %.2f %.2f %.2f %.2f %.2f %.2f]",
@@ -173,7 +168,7 @@ int px4_simple_app_main(int argc, char *argv[])
                     (double)raw1.trajectory_coefficient_y[6]);
                 for (int k=0 ; k<7 ;k++)
                 {
-                    traject[raw1.index_keyframe - 1][k][1] = raw1.trajectory_coefficient_y[k];
+                    _traject.traject[raw1.index_keyframe - 1][k][1] = raw1.trajectory_coefficient_y[k];
                 }
 
 				PX4_INFO("        z: [%.2f %.2f %.2f %.2f %.2f %.2f %.2f]",
@@ -186,7 +181,7 @@ int px4_simple_app_main(int argc, char *argv[])
                     (double)raw1.trajectory_coefficient_z[6]);
                 for (int k=0 ; k<7 ;k++)
                 {
-                    traject[raw1.index_keyframe - 1][k][2] = raw1.trajectory_coefficient_z[k];
+                    _traject.traject[raw1.index_keyframe - 1][k][2] = raw1.trajectory_coefficient_z[k];
                 }
 
 				PX4_INFO("      yaw: [%.2f %.2f %.2f %.2f %.2f %.2f %.2f]",
@@ -199,19 +194,17 @@ int px4_simple_app_main(int argc, char *argv[])
                     (double)raw1.trajectory_coefficient_r[6]);
                 for (int k=0 ; k<7 ;k++)
                 {
-                    traject[raw1.index_keyframe - 1][k][3] = raw1.trajectory_coefficient_r[k];
+                    _traject.traject[raw1.index_keyframe - 1][k][3] = raw1.trajectory_coefficient_r[k];
                 }
 
                 /* check for receive traject done*/
-                for (int j = 0; j<num_keyframe; j++)
+                _traject.all_done = true;
+                for (int j = 0; j<_traject.num_keyframe; j++)
                 {
-                    if(!receive_flag[j])
+                    if(!_traject.receive_flag[j])
                     {
-                        all_done = false;
-                        break;
+                        _traject.all_done = false;
                     }
-                    if(j == (num_keyframe-1))
-                        all_done = true;
                 }
 				/* set att and publish this information for other apps
 				 the following does not have any meaning, it's just an example
@@ -219,8 +212,8 @@ int px4_simple_app_main(int argc, char *argv[])
 			}
 		}
 	}
-    PX4_INFO("all traject receive done :\n phase: %d order: %d ",num_keyframe,traject_order);
-    PX4_INFO("t: %.2f traject: %.2f",(double)t[0],(double)traject[0][1][3]);
+    PX4_INFO("all traject receive done :\n phase: %d order: %d ",_traject.num_keyframe,_traject.traject_order);
+    PX4_INFO("t: %.2f traject: %.2f",(double)_traject.t[0],(double)_traject.traject[0][1][3]);
     
 	PX4_INFO("exiting");
 

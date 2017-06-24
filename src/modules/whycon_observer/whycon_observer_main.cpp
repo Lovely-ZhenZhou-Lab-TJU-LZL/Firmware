@@ -70,7 +70,7 @@ _target_pos_ground(X_z) = wt_pos_g(X_z) + local_z;
 void
 WhyconObserver::poll_subscriptions()
 {
-    bool updated;
+    bool updated = false;
     //orb_check(xxxx_sub, &updated);
     //if (updated) {
     //orb_copy(ORB_ID(xxxx), _xxxx_sub, &_xxxxx);
