@@ -79,6 +79,7 @@
 #include <uORB/topics/vehicle_wt_message.h>
 #include <uORB/topics/whycon_mode.h>
 #include <uORB/topics/whycon_target.h>
+#include <uORB/topics/ca_traject.h>
 
 #include <systemlib/systemlib.h>
 #include <systemlib/mavlink_log.h>
@@ -121,6 +122,44 @@ public:
 	 * @return		OK on success.
 	 */
 	int		start();
+	
+	/**
+	 * Start traject_receive task.
+	 *
+	 * @return		OK on success.
+	 */
+	int		traject_receive_start();
+	
+	/**
+	 * 
+	 *  = _traject_receive_task.
+	 */
+	int		_traject_receice_runing;
+
+	/**
+	 * Get the pos_sp from traject_sp
+	 */
+    math::Vector<4>   get_pos_sp_from_traject_sp(hrt_abstime _now);
+	
+	/**
+	 * Get the vel_sp from traject_sp
+	 */
+    math::Vector<3>   get_vel_sp_from_traject_sp(hrt_abstime _now);
+	
+	/**
+	 * Get the acc_sp from traject_sp
+	 */
+    math::Vector<3>   get_acc_sp_from_traject_sp(hrt_abstime _now);
+	
+	/**
+	 * Print the traject
+	 */
+	void        print_traject_sp();
+	
+	/**
+	 * Test the traject
+	 */
+	void        test_traject();
 
 	bool		cross_sphere_line(const math::Vector<3> &sphere_c, float sphere_r,
 					  const math::Vector<3> line_a, const math::Vector<3> line_b, math::Vector<3> &res);
@@ -128,6 +167,7 @@ public:
 private:
 	bool		_task_should_exit;		/**< if true, task should exit */
 	int		_control_task;			/**< task handle for task */
+	int		_traject_receive_task;			/**< task handle for traject receive task */
 	orb_advert_t	_mavlink_log_pub;		/**< mavlink log advert */
 
 	int		_vehicle_status_sub;		/**< vehicle status subscription */
@@ -145,6 +185,7 @@ private:
 	int		_whycon_mode_sub;		/**< lu - whycon mode */
 	int		_whycon_target_sub;		/**< lu - whycon target */
 	int		_vehicle_wt_message_sub;		/**< lu - whycon message */
+	int		_ca_traject_sub;
 
 	orb_advert_t	_att_sp_pub;			/**< attitude setpoint publication */
 	orb_advert_t	_local_pos_sp_pub;		/**< vehicle local position setpoint publication */
@@ -164,6 +205,7 @@ private:
 	struct vehicle_local_position_setpoint_s	_local_pos_sp;		/**< vehicle local position setpoint */
 	struct vehicle_global_velocity_setpoint_s	_global_vel_sp;		/**< vehicle global velocity setpoint */
 
+
     struct whycon_mode_s _whycon_mode;
     struct whycon_target_s _whycon_target;
     struct vehicle_wt_message_s _vehicle_wt_message;
@@ -174,7 +216,20 @@ private:
 	control::BlockDerivative _vel_x_deriv;
 	control::BlockDerivative _vel_y_deriv;
 	control::BlockDerivative _vel_z_deriv;
-
+	
+	struct Trajectory_s{
+    bool _start_traject_flag;
+    hrt_abstime _t_start_time;
+	uint64_t PC_time_stamp;
+	uint64_t receive_time_stamp;
+    bool receive_flag[10];
+    float t[11];
+    float traject[10][7][4];
+    int num_keyframe;
+    int traject_order;
+    bool all_done;
+	}	_traject_sp;
+	
 	struct {
 		param_t thr_min;
 		param_t thr_max;
@@ -281,6 +336,16 @@ private:
 	bool control_vel_enabled_prev;	/**< previous loop was in velocity controlled mode (control_state.flag_control_velocity_enabled) */
 
 	/**
+	 * Reset the traject_sp
+	 */
+	void    traject_sp_reset();
+
+	/**
+	 * Restart the traject_sp
+	 */
+	void    traject_sp_restart();
+
+	/**
 	 * Update our local parameter cache.
 	 */
 	int		parameters_update(bool force);
@@ -340,6 +405,8 @@ private:
 	 * Set position setpoint for AUTO
 	 */
 	void		control_auto(float dt);
+	
+
 
 	/**
 	 * Select between barometric and global (AMSL) altitudes
@@ -350,11 +417,21 @@ private:
 	 * Shim for calling task_main from task_create.
 	 */
 	static void	task_main_trampoline(int argc, char *argv[]);
-
+	
+	/**
+	 * Shim for calling traject_receive task from task_create.
+	 */
+	static void	traject_receive_trampoline(int argc, char *argv[]);
+	
 	/**
 	 * Main sensor collection task.
 	 */
 	void		task_main();
+	
+	/**
+	 * Traject receive task.
+	 */
+	void		traject_receive_task_main();
 };
 
 namespace pos_control
@@ -367,6 +444,7 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	SuperBlock(NULL, "MPC"),
 	_task_should_exit(false),
 	_control_task(-1),
+	_traject_receive_task(-1),
 	_mavlink_log_pub(nullptr),
 
 	/* subscriptions */
@@ -382,6 +460,7 @@ MulticopterPositionControl::MulticopterPositionControl() :
     _whycon_mode_sub(-1),
     _whycon_target_sub(-1),
     _vehicle_wt_message_sub(-1),
+    _ca_traject_sub(-1),
 
 	/* publications */
 	_att_sp_pub(nullptr),
@@ -431,6 +510,11 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_ctrl_state.q[0] = 1.0f;
 
 	memset(&_ref_pos, 0, sizeof(_ref_pos));
+	
+	_traject_receice_runing = _traject_receive_task;
+	//initial traject_sp
+	traject_sp_reset();
+	
 
 	_params.pos_p.zero();
 	_params.vel_p.zero();
@@ -501,7 +585,7 @@ MulticopterPositionControl::MulticopterPositionControl() :
 
 MulticopterPositionControl::~MulticopterPositionControl()
 {
-	if (_control_task != -1) {
+	if (_control_task != -1 && _traject_receive_task != -1) {
 		/* task wakes up every 100ms or so at the longest */
 		_task_should_exit = true;
 
@@ -515,12 +599,33 @@ MulticopterPositionControl::~MulticopterPositionControl()
 			/* if we have given up, kill it */
 			if (++i > 50) {
 				px4_task_delete(_control_task);
+				px4_task_delete(_traject_receive_task);
 				break;
 			}
-		} while (_control_task != -1);
+		} while (_control_task != -1 && _traject_receive_task != -1);
 	}
 
 	pos_control::g_control = nullptr;
+}
+
+void
+MulticopterPositionControl::traject_sp_reset()
+{
+    _traject_sp._start_traject_flag = false;
+    _traject_sp._t_start_time = 0;
+	memset(&_traject_sp,0,sizeof(_traject_sp));
+    for (int i = 0; i <10; i++) {
+        _traject_sp.receive_flag[i] = false;
+    }
+    _traject_sp.all_done = false;
+    _traject_sp.num_keyframe = 10;
+}
+
+void
+MulticopterPositionControl::traject_sp_restart()
+{
+    _traject_sp._start_traject_flag = false;
+    _traject_sp._t_start_time = 0;
 }
 
 int
@@ -760,6 +865,12 @@ void
 MulticopterPositionControl::task_main_trampoline(int argc, char *argv[])
 {
 	pos_control::g_control->task_main();
+}
+
+void
+MulticopterPositionControl::traject_receive_trampoline(int argc, char *argv[])
+{
+	pos_control::g_control->traject_receive_task_main();
 }
 
 void
@@ -1275,6 +1386,404 @@ void MulticopterPositionControl::control_auto(float dt)
 	} else {
 		/* no waypoint, do nothing, setpoint was already reset */
 	}
+}
+
+math::Vector<4>
+MulticopterPositionControl::get_pos_sp_from_traject_sp(hrt_abstime  _now)
+{
+    int order = _traject_sp.traject_order;
+    int index = 0;
+    float _t_vector;
+    float _traject_scale;
+
+    math::Vector<4> _res;
+    _res.zero();
+
+    if (!_traject_sp._start_traject_flag)
+    {
+        _traject_sp._start_traject_flag = true;
+        _traject_sp._t_start_time = _now;
+    }
+
+    float _delta_t = (_now - _traject_sp._t_start_time)*0.000001;
+
+    if (_traject_sp.all_done)
+    {
+        for (int i=1; i < _traject_sp.num_keyframe+1 ; i++)
+        {
+            if(_delta_t <= _traject_sp.t[i])
+            {
+                index = i - 1;
+                break;
+            }
+            if(_delta_t > _traject_sp.t[_traject_sp.num_keyframe])
+            {
+                index = _traject_sp.num_keyframe - 1;
+                _delta_t = _traject_sp.t[_traject_sp.num_keyframe];
+                break;
+            }
+        }
+        for (int j=0; j < 4 ; j++)
+        {
+            for (int i=0; i < order+1 ; i++)
+            {
+                _t_vector = (float)pow((double)_delta_t,order-i);
+                _traject_scale = _traject_sp.traject[index][i][j];
+                _res(j) += _traject_scale * _t_vector;
+            }
+        }
+    }
+    else
+    {
+        _res(0) = _pos_sp(0);
+        _res(1) = _pos_sp(1);
+        _res(2) = _pos_sp(2);
+        _res(3) = _att_sp.yaw_body;
+    }
+    return _res;
+}
+
+math::Vector<3>
+MulticopterPositionControl::get_vel_sp_from_traject_sp(hrt_abstime _now)
+{
+    int order = _traject_sp.traject_order;
+    int index = 0;
+    float _t_vector;
+    float _traject_scale;
+
+    math::Vector<3> _res;
+    _res.zero();
+
+    if (!_traject_sp._start_traject_flag)
+    {
+        _traject_sp._start_traject_flag = true;
+        _traject_sp._t_start_time = _now;
+    }
+
+    float _delta_t = (_now - _traject_sp._t_start_time)*0.000001;
+
+    if (_traject_sp.all_done)
+    {
+        for (int i=1; i < _traject_sp.num_keyframe+1 ; i++)
+        {
+            if( _delta_t <= _traject_sp.t[i])
+            {
+                index = i - 1;
+                break;
+            }
+            if(_delta_t > _traject_sp.t[_traject_sp.num_keyframe])
+            {
+                index = _traject_sp.num_keyframe - 1;
+                _delta_t = _traject_sp.t[_traject_sp.num_keyframe];
+                break;
+            }
+        }
+        for (int j=0; j < 3 ; j++)
+        {
+            for (int i=0; i < order ; i++)
+            {
+                _t_vector = (float)pow((double)_delta_t,order-i-1);
+                _traject_scale = _traject_sp.traject[index][i][j];
+                _res(j) += (order-i) * _traject_scale * _t_vector;
+            }
+        }
+    }
+    else
+    {
+        _res.zero();
+    }
+    return _res;
+}
+
+math::Vector<3>
+MulticopterPositionControl::get_acc_sp_from_traject_sp(hrt_abstime _now)
+{
+    int order = _traject_sp.traject_order;
+    int index = 0;
+    float _t_vector;
+    float _traject_scale;
+
+    math::Vector<3> _res;
+    _res.zero();
+
+    if (!_traject_sp._start_traject_flag)
+    {
+        _traject_sp._start_traject_flag = true;
+        _traject_sp._t_start_time = _now;
+    }
+
+    float _delta_t = (_now - _traject_sp._t_start_time)*0.000001;
+
+    if (_traject_sp.all_done)
+    {
+        for (int i=1; i < _traject_sp.num_keyframe+1 ; i++)
+        {
+            if(_delta_t <= _traject_sp.t[i])
+            {
+                index = i - 1;
+                break;
+            }
+            if(_delta_t > _traject_sp.t[_traject_sp.num_keyframe])
+            {
+                index = _traject_sp.num_keyframe - 1;
+                _delta_t = _traject_sp.t[_traject_sp.num_keyframe];
+                break;
+            }
+        }
+        for (int j=0; j < 3 ; j++)
+        {
+            for (int i=0; i < order-1 ; i++)
+            {
+                _t_vector = (float)pow((double)_delta_t,order-i-2);
+                _traject_scale = _traject_sp.traject[index][i][j];
+                _res(j) += (order-i) * (order-i-1) * _traject_scale * _t_vector;
+            }
+        }
+    }
+    else
+    {
+        _res.zero();
+    }
+    return _res;
+}
+
+void
+MulticopterPositionControl::print_traject_sp()
+{
+	if (_traject_sp.all_done)
+	{
+		PX4_INFO("Traject [%" PRIu64 "] has been receive", _traject_sp.PC_time_stamp);
+		PX4_INFO("receive time :[%" PRIu64 "]", _traject_sp.receive_time_stamp);
+		PX4_INFO("Traject:\n  total: %d order+1: %d",
+						 _traject_sp.num_keyframe,
+						 _traject_sp.traject_order);
+		for(int i=0 ; i < _traject_sp.num_keyframe ; i++)
+		{
+			PX4_INFO(" Phase: %d",i+1);
+			PX4_INFO("     start time %.2f finish time %.2f",
+                     (double)_traject_sp.t[i],
+                     (double)_traject_sp.t[i+1]);
+            PX4_INFO("        x: [%.2f %.2f %.2f %.2f %.2f %.2f %.2f]",
+                    (double)_traject_sp.traject[i][0][0],
+                    (double)_traject_sp.traject[i][1][0],
+                    (double)_traject_sp.traject[i][2][0],
+                    (double)_traject_sp.traject[i][3][0],
+                    (double)_traject_sp.traject[i][4][0],
+                    (double)_traject_sp.traject[i][5][0],
+                    (double)_traject_sp.traject[i][6][0]);
+            PX4_INFO("        y: [%.2f %.2f %.2f %.2f %.2f %.2f %.2f]",
+                    (double)_traject_sp.traject[i][0][1],
+                    (double)_traject_sp.traject[i][1][1],
+                    (double)_traject_sp.traject[i][2][1],
+                    (double)_traject_sp.traject[i][3][1],
+                    (double)_traject_sp.traject[i][4][1],
+                    (double)_traject_sp.traject[i][5][1],
+                    (double)_traject_sp.traject[i][6][1]);
+            PX4_INFO("        z: [%.2f %.2f %.2f %.2f %.2f %.2f %.2f]",
+                    (double)_traject_sp.traject[i][0][2],
+                    (double)_traject_sp.traject[i][1][2],
+                    (double)_traject_sp.traject[i][2][2],
+                    (double)_traject_sp.traject[i][3][2],
+                    (double)_traject_sp.traject[i][4][2],
+                    (double)_traject_sp.traject[i][5][2],
+                    (double)_traject_sp.traject[i][6][2]);
+            PX4_INFO("        r: [%.2f %.2f %.2f %.2f %.2f %.2f %.2f]",
+                    (double)_traject_sp.traject[i][0][3],
+                    (double)_traject_sp.traject[i][1][3],
+                    (double)_traject_sp.traject[i][2][3],
+                    (double)_traject_sp.traject[i][3][3],
+                    (double)_traject_sp.traject[i][4][3],
+                    (double)_traject_sp.traject[i][5][3],
+                    (double)_traject_sp.traject[i][6][3]);
+		}
+	}
+	else
+	{
+		PX4_INFO("Traject hasn't been receive");
+	}
+}
+
+void
+MulticopterPositionControl::test_traject()
+{
+    //int _test_local_pos_sub;
+	//_test_local_pos_sub = orb_subscribe(ORB_ID(vehicle_local_position));
+	/* wakeup source */
+	//px4_pollfd_struct_t fds[1];
+
+	//fds[0].fd = _test_local_pos_sub;
+	//fds[0].events = POLLIN;
+
+    hrt_abstime start_time = hrt_absolute_time();
+    hrt_abstime t;
+
+    math::Vector<4> fake_pos_sp;
+    math::Vector<3> fake_vel_sp;
+    math::Vector<3> fake_acc_sp;
+
+    traject_sp_restart();
+
+	while (!_task_should_exit) {
+		/* wait for up to 20ms for data */
+		//int pret = px4_poll(&fds[0], (sizeof(fds) / sizeof(fds[0])), 20);
+
+		/* timed out - periodic check for _task_should_exit */
+		//if (pret == 0) {
+			// Go through the loop anyway to copy manual input at 50 Hz.
+		//}
+
+		/* this is undesirable but not much we can do */
+		//if (pret < 0) {
+			//warn("poll error %d, %d", pret, errno);
+			//continue;
+		//}
+        t = hrt_absolute_time();
+        
+        fake_pos_sp = get_pos_sp_from_traject_sp(t);
+        fake_vel_sp = get_vel_sp_from_traject_sp(t);
+        fake_acc_sp = get_acc_sp_from_traject_sp(t);
+        
+        PX4_INFO("pos_sp :[%.2f %.2f %.2f %.2f]",(double)fake_pos_sp(0),(double)fake_pos_sp(1),(double)fake_pos_sp(2),(double)fake_pos_sp(3));
+        PX4_INFO("vel_sp :[%.2f %.2f %.2f]",(double)fake_vel_sp(0),(double)fake_vel_sp(1),(double)fake_vel_sp(2));
+        PX4_INFO("acc_sp :[%.2f %.2f %.2f]",(double)fake_acc_sp(0),(double)fake_acc_sp(1),(double)fake_acc_sp(2));
+
+        if (t > start_time + 10000000)
+            break;
+        
+        usleep(100000);
+    }
+}
+
+void 
+MulticopterPositionControl::traject_receive_task_main()
+{
+	_ca_traject_sub = orb_subscribe(ORB_ID(ca_traject));
+		/* wakeup source */
+	px4_pollfd_struct_t fds[1];
+
+	fds[0].fd = _ca_traject_sub;
+	fds[0].events = POLLIN;
+	uint64_t last_PC_time_usec = 0;
+    _traject_receice_runing = _traject_receive_task;
+		while (!_task_should_exit) {
+		/* wait for up to 20ms for data */
+		int pret = px4_poll(&fds[0], 1, 1000);
+		/* timed out - periodic check for _task_should_exit */
+		if (pret == 0) {
+			//
+			continue;
+		}
+
+		/* this is undesirable but not much we can do */
+		if (pret < 0) {
+			warn("poll error %d, %d", pret, errno);
+			continue;
+		}
+					
+		if (fds[0].revents & POLLIN) {
+
+                struct ca_traject_s raw1;
+                orb_copy(ORB_ID(ca_traject), _ca_traject_sub, &raw1);
+                
+                /*  check whether the traject has been freshed */
+                if (_traject_sp.all_done && raw1.PC_time_usec == last_PC_time_usec)
+				{
+					continue;
+				}
+				
+				 if (_traject_sp.all_done )
+				{
+                	traject_sp_reset();
+                }
+				/*
+				PX4_INFO("Traject:\n  total: %d order+1: %d",
+					 raw1.num_keyframe,
+					 raw1.order_p_1);
+					 */
+				//PX4_INFO("     phase %d :",raw1.index_keyframe);
+                _traject_sp.receive_flag[raw1.index_keyframe - 1] = true;
+                _traject_sp.num_keyframe = raw1.num_keyframe;
+                _traject_sp.traject_order = raw1.order_p_1 - 1;
+				/*
+				PX4_INFO("     start time %.2f finish time %.2f",
+                     (double)raw1.t[0],
+                     (double)raw1.t[1]);
+                     */
+                _traject_sp.t[raw1.index_keyframe - 1] = raw1.t[0];
+                _traject_sp.t[raw1.index_keyframe] = raw1.t[1];
+				/*
+				PX4_INFO("        x: [%.2f %.2f %.2f %.2f %.2f %.2f %.2f]",
+                    (double)raw1.trajectory_coefficient_x[0],
+                    (double)raw1.trajectory_coefficient_x[1],
+                    (double)raw1.trajectory_coefficient_x[2],
+                    (double)raw1.trajectory_coefficient_x[3],
+                    (double)raw1.trajectory_coefficient_x[4],
+                    (double)raw1.trajectory_coefficient_x[5],
+                    (double)raw1.trajectory_coefficient_x[6]);
+                    */
+                for (int k=0 ; k<7 ;k++)
+                {
+                    _traject_sp.traject[raw1.index_keyframe - 1][k][0] = raw1.trajectory_coefficient_x[k];
+                }
+				/*
+				PX4_INFO("        y: [%.2f %.2f %.2f %.2f %.2f %.2f %.2f]",
+                    (double)raw1.trajectory_coefficient_y[0],
+                    (double)raw1.trajectory_coefficient_y[1],
+                    (double)raw1.trajectory_coefficient_y[2],
+                    (double)raw1.trajectory_coefficient_y[3],
+                    (double)raw1.trajectory_coefficient_y[4],
+                    (double)raw1.trajectory_coefficient_y[5],
+                    (double)raw1.trajectory_coefficient_y[6]);
+                    */
+                for (int k=0 ; k<7 ;k++)
+                {
+                    _traject_sp.traject[raw1.index_keyframe - 1][k][1] = raw1.trajectory_coefficient_y[k];
+                }
+				/*
+				PX4_INFO("        z: [%.2f %.2f %.2f %.2f %.2f %.2f %.2f]",
+                    (double)raw1.trajectory_coefficient_z[0],
+                    (double)raw1.trajectory_coefficient_z[1],
+                    (double)raw1.trajectory_coefficient_z[2],
+                    (double)raw1.trajectory_coefficient_z[3],
+                    (double)raw1.trajectory_coefficient_z[4],
+                    (double)raw1.trajectory_coefficient_z[5],
+                    (double)raw1.trajectory_coefficient_z[6]);
+                    */
+                for (int k=0 ; k<7 ;k++)
+                {
+                    _traject_sp.traject[raw1.index_keyframe - 1][k][2] = raw1.trajectory_coefficient_z[k];
+                }
+				/*
+				PX4_INFO("      yaw: [%.2f %.2f %.2f %.2f %.2f %.2f %.2f]",
+                    (double)raw1.trajectory_coefficient_r[0],
+                    (double)raw1.trajectory_coefficient_r[1],
+                    (double)raw1.trajectory_coefficient_r[2],
+                    (double)raw1.trajectory_coefficient_r[3],
+                    (double)raw1.trajectory_coefficient_r[4],
+                    (double)raw1.trajectory_coefficient_r[5],
+                    (double)raw1.trajectory_coefficient_r[6]);
+                */
+                for (int k=0 ; k<7 ;k++)
+                {
+                    _traject_sp.traject[raw1.index_keyframe - 1][k][3] = raw1.trajectory_coefficient_r[k];
+                }
+				
+				last_PC_time_usec = raw1.PC_time_usec;
+				_traject_sp.PC_time_stamp = raw1.PC_time_usec;
+				_traject_sp.receive_time_stamp = raw1.timestamp;
+                /* check for receive_flagive traject done*/
+                bool temp_all_done = true;
+                for (int j = 0; j<_traject_sp.num_keyframe; j++)
+                {
+                    temp_all_done &= _traject_sp.receive_flag[j];
+                }
+                _traject_sp.all_done = temp_all_done;
+			}
+                _traject_receice_runing = _traject_receive_task;
+		}
+		mavlink_log_info(&_mavlink_log_pub, "[mpc] t_r stopped");
+		_traject_receive_task = -1;
+		_traject_receice_runing = _traject_receive_task;
 }
 
 void
@@ -2225,10 +2734,31 @@ MulticopterPositionControl::start()
 	return OK;
 }
 
+int
+MulticopterPositionControl::traject_receive_start()
+{
+	ASSERT(_traject_receive_task == -1);
+
+	/* start the receive traject task */
+	_traject_receive_task = px4_task_spawn_cmd("traject_receive_task",
+					   SCHED_DEFAULT,
+					   SCHED_PRIORITY_DEFAULT,
+					   5000,
+					   (px4_main_t)&MulticopterPositionControl::traject_receive_trampoline,
+					   nullptr);
+
+	if (_traject_receive_task < 0) {
+		warn("traject receive task start failed");
+		return -errno;
+	}
+
+	return OK;
+}
+
 int mc_pos_control_main(int argc, char *argv[])
 {
-	if (argc < 2) {
-		warnx("usage: mc_pos_control {start|stop|status}");
+    if (argc < 2) {
+        warnx("usage: mc_pos_control {start|start_with_t_c|stop|status|test_traject}");
 		return 1;
 	}
 
@@ -2255,6 +2785,37 @@ int mc_pos_control_main(int argc, char *argv[])
 
 		return 0;
 	}
+	
+	if (!strcmp(argv[1], "start_with_t_c")) {
+
+		if (pos_control::g_control != nullptr) {
+			warnx("already running");
+			return 1;
+		}
+
+		pos_control::g_control = new MulticopterPositionControl;
+
+		if (pos_control::g_control == nullptr) {
+			warnx("alloc failed");
+			return 1;
+		}
+
+		if (OK != pos_control::g_control->start()) {
+			delete pos_control::g_control;
+			pos_control::g_control = nullptr;
+			warnx("start failed");
+			return 1;
+		}
+		
+		if (OK != pos_control::g_control->traject_receive_start()) {
+			delete pos_control::g_control;
+			pos_control::g_control = nullptr;
+			warnx("start failed");
+			return 1;
+		}
+		
+		return 0;
+	}
 
 	if (!strcmp(argv[1], "stop")) {
 		if (pos_control::g_control == nullptr) {
@@ -2270,6 +2831,10 @@ int mc_pos_control_main(int argc, char *argv[])
 	if (!strcmp(argv[1], "status")) {
 		if (pos_control::g_control) {
 			warnx("running");
+			if(pos_control::g_control->_traject_receice_runing != -1) {
+				warnx("receive traject runing");
+				pos_control::g_control->print_traject_sp();
+			}
 			return 0;
 
 		} else {
@@ -2278,6 +2843,21 @@ int mc_pos_control_main(int argc, char *argv[])
 		}
 	}
 
+	if (!strcmp(argv[1], "test_traject")) {
+		if (pos_control::g_control) {
+			warnx("running");
+			if(pos_control::g_control->_traject_receice_runing != -1) {
+				warnx("receive traject runing");
+				pos_control::g_control->test_traject();
+			}
+			return 0;
+
+		} else {
+			warnx("not running");
+			return 1;
+		}
+	}
+    
 	warnx("unrecognized command");
 	return 1;
 }

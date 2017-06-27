@@ -31,7 +31,7 @@ fi
 
 mc_att_control start
 
-mc_pos_control start
+mc_pos_control start_with_t_c
 
 #
 # Start Land Detector
