@@ -1,2 +1,3 @@
 bool ofwhycon_enable
+bool oftraject_enable
 bool whycon_data_valid

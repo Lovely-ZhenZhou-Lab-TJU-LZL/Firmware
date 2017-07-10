@@ -139,6 +139,11 @@ public:
 	/**
 	 * Get the pos_sp from traject_sp
 	 */
+    void   get_state_sp_from_traject_sp(hrt_abstime _now);
+
+	/**
+	 * Get the pos_sp from traject_sp
+	 */
     math::Vector<4>   get_pos_sp_from_traject_sp(hrt_abstime _now);
 	
 	/**
@@ -155,6 +160,11 @@ public:
 	 * Print the traject
 	 */
 	void        print_traject_sp();
+	
+	/**
+	 * Print the mode state
+	 */
+	void        print_mode_state();
 	
 	/**
 	 * Test the traject
@@ -217,7 +227,7 @@ private:
 	control::BlockDerivative _vel_y_deriv;
 	control::BlockDerivative _vel_z_deriv;
 	
-	struct Trajectory_s{
+	struct {
     bool _start_traject_flag;
     hrt_abstime _t_start_time;
 	uint64_t PC_time_stamp;
@@ -228,8 +238,16 @@ private:
     int num_keyframe;
     int traject_order;
     bool all_done;
+    bool has_run_once;
 	}	_traject_sp;
 	
+	struct {
+    math::Vector<3> _pos_f_t;
+    math::Vector<3> _vel_f_t;
+    math::Vector<3> _acc_f_t;
+    float _att_yaw_f_t;
+	}	_state_sp_f_t;
+
 	struct {
 		param_t thr_min;
 		param_t thr_max;
@@ -399,7 +417,7 @@ private:
 	/**
 	 * Set position setpoint using offboard control
 	 */
-	void		control_offboard(float dt);
+	void		control_offboard(float dt, hrt_abstime _now);
 
 	/**
 	 * Set position setpoint for AUTO
@@ -514,6 +532,8 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_traject_receice_runing = _traject_receive_task;
 	//initial traject_sp
 	traject_sp_reset();
+	//initial state_sp
+    memset(&_state_sp_f_t, 0, sizeof(_state_sp_f_t));
 	
 
 	_params.pos_p.zero();
@@ -619,12 +639,14 @@ MulticopterPositionControl::traject_sp_reset()
     }
     _traject_sp.all_done = false;
     _traject_sp.num_keyframe = 10;
+    _traject_sp.has_run_once = false;
 }
 
 void
 MulticopterPositionControl::traject_sp_restart()
 {
     _traject_sp._start_traject_flag = false;
+    _traject_sp.has_run_once = false;
     _traject_sp._t_start_time = 0;
 }
 
@@ -1050,7 +1072,7 @@ MulticopterPositionControl::control_manual(float dt)
 }
 
 void
-MulticopterPositionControl::control_offboard(float dt)
+MulticopterPositionControl::control_offboard(float dt, hrt_abstime _now)
 {
 	bool updated;
 	orb_check(_pos_sp_triplet_sub, &updated);
@@ -1060,7 +1082,10 @@ MulticopterPositionControl::control_offboard(float dt)
 	}
     float lenth_x;
     float lenth_y;
-	if (_pos_sp_triplet.current.valid) {
+	if (_pos_sp_triplet.current.valid && !_whycon_mode.oftraject_enable) {
+        /* reset the traject_sp */
+        traject_sp_restart();
+
 		if (_control_mode.flag_control_position_enabled && _pos_sp_triplet.current.position_valid) {
 			/* control position */
             /* lu  whycon target follow*/
@@ -1069,7 +1094,11 @@ MulticopterPositionControl::control_offboard(float dt)
                 lenth_y = fabs(_vehicle_wt_message.y);
                 _pos_sp(0) = lenth_x < 1.2f ? _vehicle_wt_message.x : (_vehicle_wt_message.x/lenth_x*1.2f);
                 _pos_sp(1) = lenth_y < 1.2f ? _vehicle_wt_message.y : (_vehicle_wt_message.y/lenth_y*1.2f);
-            } else {
+            /*} else if (_whycon_mode.oftraject_enable && !_whycon_mode.ofwhycon_enable && _traject_sp.all_done) {
+                get_state_sp_from_traject_sp(_now);
+                _pos_sp(0) = _state_sp_f_t._pos_f_t(0);
+                _pos_sp(1) = _state_sp_f_t._pos_f_t(1); */
+            } else{
                 _pos_sp(0) = _pos_sp_triplet.current.x;
                 _pos_sp(1) = _pos_sp_triplet.current.y;
             }
@@ -1088,7 +1117,8 @@ MulticopterPositionControl::control_offboard(float dt)
 
 		if (_pos_sp_triplet.current.yaw_valid) {
 			_att_sp.yaw_body = _pos_sp_triplet.current.yaw;
-
+        /*} else if (_whycon_mode.oftraject_enable && !_whycon_mode.ofwhycon_enable && _traject_sp.all_done) {
+            _att_sp.yaw_body = _state_sp_f_t._att_yaw_f_t;*/
 		} else if (_pos_sp_triplet.current.yawspeed_valid) {
 			_att_sp.yaw_body = _att_sp.yaw_body + _pos_sp_triplet.current.yawspeed * dt;
 		}
@@ -1099,6 +1129,9 @@ MulticopterPositionControl::control_offboard(float dt)
             if (_whycon_mode.ofwhycon_enable && _whycon_mode.whycon_data_valid && wt_without_timeout){
                 _pos_sp(2) = (_vehicle_wt_message.z - 1.0f) > -1.2f ?  (_vehicle_wt_message.z - 1.0f) : -1.2f;
 			    _run_alt_control = true;
+            /*} else if (_whycon_mode.oftraject_enable && !_whycon_mode.ofwhycon_enable && _traject_sp.all_done) {
+                _pos_sp(2) = _state_sp_f_t._pos_f_t(2);
+			    _run_alt_control = true; */
             } else {
                 _pos_sp(2) = _pos_sp_triplet.current.z;
 			    _run_alt_control = true;
@@ -1110,6 +1143,9 @@ MulticopterPositionControl::control_offboard(float dt)
             if (_whycon_mode.ofwhycon_enable && _whycon_mode.whycon_data_valid && wt_without_timeout){
                 _pos_sp(2) = (_vehicle_wt_message.z - 1.2f) > -1.5f ?  (_vehicle_wt_message.z - 1.2f) : -1.5f;
 			    _run_alt_control = true;
+            /*} else if (_whycon_mode.oftraject_enable && !_whycon_mode.ofwhycon_enable && _traject_sp.all_done) {
+                _pos_sp(2) = _state_sp_f_t._pos_f_t(2);
+			    _run_alt_control = true;*/
             } else {
                 _pos_sp(2) = _pos_sp_triplet.current.z;
 			    _run_alt_control = true;
@@ -1125,6 +1161,16 @@ MulticopterPositionControl::control_offboard(float dt)
 			_run_alt_control = false; /* request velocity setpoint to be used, instead of position setpoint */
 		}
 
+    } else if(_pos_sp_triplet.current.valid && _whycon_mode.oftraject_enable) {
+                if(_traject_sp.all_done && !_traject_sp.has_run_once ) {
+                    get_state_sp_from_traject_sp(_now);
+                    _pos_sp(0) = _state_sp_f_t._pos_f_t(0);
+                    _pos_sp(1) = _state_sp_f_t._pos_f_t(1); 
+                    _pos_sp(2) = _state_sp_f_t._pos_f_t(2); 
+                    _run_alt_control = true;
+                    _att_sp.yaw_body = _state_sp_f_t._att_yaw_f_t;
+                    /* TODO: if not all_done vel_t_sp set zero */
+                } 
 	} else {
 		reset_pos_sp();
 		reset_alt_sp();
@@ -1388,6 +1434,28 @@ void MulticopterPositionControl::control_auto(float dt)
 	}
 }
 
+void
+MulticopterPositionControl::get_state_sp_from_traject_sp(hrt_abstime _now)
+{
+    math::Vector<4> _temp_pos_sp = get_pos_sp_from_traject_sp(_now);
+    math::Vector<3> _temp_vel_sp = get_vel_sp_from_traject_sp(_now);
+    math::Vector<3> _temp_acc_sp = get_acc_sp_from_traject_sp(_now);
+
+    _state_sp_f_t._pos_f_t(0) = _temp_pos_sp(0);
+    _state_sp_f_t._pos_f_t(1) = _temp_pos_sp(1);
+    _state_sp_f_t._pos_f_t(2) = _temp_pos_sp(2);
+    
+    _state_sp_f_t._vel_f_t(0) = _temp_vel_sp(0);
+    _state_sp_f_t._vel_f_t(1) = _temp_vel_sp(1);
+    _state_sp_f_t._vel_f_t(2) = _temp_vel_sp(2);
+
+    _state_sp_f_t._acc_f_t(0) = _temp_acc_sp(0);
+    _state_sp_f_t._acc_f_t(1) = _temp_acc_sp(1);
+    _state_sp_f_t._acc_f_t(2) = _temp_acc_sp(2);
+
+    _state_sp_f_t._att_yaw_f_t = _temp_pos_sp(3);
+}
+
 math::Vector<4>
 MulticopterPositionControl::get_pos_sp_from_traject_sp(hrt_abstime  _now)
 {
@@ -1399,35 +1467,40 @@ MulticopterPositionControl::get_pos_sp_from_traject_sp(hrt_abstime  _now)
     math::Vector<4> _res;
     _res.zero();
 
-    if (!_traject_sp._start_traject_flag)
+    if (_traject_sp.all_done && !_traject_sp._start_traject_flag)
     {
         _traject_sp._start_traject_flag = true;
         _traject_sp._t_start_time = _now;
     }
 
-    float _delta_t = (_now - _traject_sp._t_start_time)*0.000001;
-
-    if (_traject_sp.all_done)
+    if (_traject_sp.all_done && !_traject_sp.has_run_once && _traject_sp._start_traject_flag)
     {
-        for (int i=1; i < _traject_sp.num_keyframe+1 ; i++)
+    float _delta_t = (_now - _traject_sp._t_start_time)*0.000001;
+        if(_delta_t > _traject_sp.t[_traject_sp.num_keyframe])
         {
-            if(_delta_t <= _traject_sp.t[i])
+            index = _traject_sp.num_keyframe - 1;
+            _delta_t = _traject_sp.t[_traject_sp.num_keyframe];
+            _traject_sp.has_run_once = true;
+        } else {
+            for (int i=1; i < _traject_sp.num_keyframe+1 ; i++)
             {
-                index = i - 1;
-                break;
-            }
-            if(_delta_t > _traject_sp.t[_traject_sp.num_keyframe])
-            {
-                index = _traject_sp.num_keyframe - 1;
-                _delta_t = _traject_sp.t[_traject_sp.num_keyframe];
-                break;
+                if(_delta_t <= _traject_sp.t[i])
+                {
+                    index = i - 1;
+                    break;
+                }
             }
         }
         for (int j=0; j < 4 ; j++)
         {
             for (int i=0; i < order+1 ; i++)
             {
-                _t_vector = (float)pow((double)_delta_t,order-i);
+                if (order-i == 0)
+                {
+                    _t_vector = 1;
+                } else {
+                    _t_vector = (float)pow((float)_delta_t,order-i);
+                }
                 _traject_scale = _traject_sp.traject[index][i][j];
                 _res(j) += _traject_scale * _t_vector;
             }
@@ -1460,10 +1533,10 @@ MulticopterPositionControl::get_vel_sp_from_traject_sp(hrt_abstime _now)
         _traject_sp._t_start_time = _now;
     }
 
+    if (_traject_sp.all_done && !_traject_sp.has_run_once)
+    {
     float _delta_t = (_now - _traject_sp._t_start_time)*0.000001;
 
-    if (_traject_sp.all_done)
-    {
         for (int i=1; i < _traject_sp.num_keyframe+1 ; i++)
         {
             if( _delta_t <= _traject_sp.t[i])
@@ -1475,6 +1548,7 @@ MulticopterPositionControl::get_vel_sp_from_traject_sp(hrt_abstime _now)
             {
                 index = _traject_sp.num_keyframe - 1;
                 _delta_t = _traject_sp.t[_traject_sp.num_keyframe];
+                _traject_sp.has_run_once = true;
                 break;
             }
         }
@@ -1512,10 +1586,9 @@ MulticopterPositionControl::get_acc_sp_from_traject_sp(hrt_abstime _now)
         _traject_sp._t_start_time = _now;
     }
 
-    float _delta_t = (_now - _traject_sp._t_start_time)*0.000001;
-
-    if (_traject_sp.all_done)
+    if (_traject_sp.all_done && !_traject_sp.has_run_once)
     {
+    float _delta_t = (_now - _traject_sp._t_start_time)*0.000001;
         for (int i=1; i < _traject_sp.num_keyframe+1 ; i++)
         {
             if(_delta_t <= _traject_sp.t[i])
@@ -1527,6 +1600,7 @@ MulticopterPositionControl::get_acc_sp_from_traject_sp(hrt_abstime _now)
             {
                 index = _traject_sp.num_keyframe - 1;
                 _delta_t = _traject_sp.t[_traject_sp.num_keyframe];
+                _traject_sp.has_run_once = true;
                 break;
             }
         }
@@ -1545,6 +1619,28 @@ MulticopterPositionControl::get_acc_sp_from_traject_sp(hrt_abstime _now)
         _res.zero();
     }
     return _res;
+}
+
+void
+MulticopterPositionControl::print_mode_state()
+{
+    if (_whycon_mode.ofwhycon_enable)
+    {
+        PX4_INFO("whycon_mode: enabled");
+    }
+    else
+    {
+        PX4_INFO("whycon_mode: disabled");
+    }
+
+    if (_whycon_mode.oftraject_enable)
+    {
+        PX4_INFO("traject_mode: enabled");
+    }
+    else
+    {
+        PX4_INFO("traject_mode: disabled");
+    }
 }
 
 void
@@ -1642,12 +1738,10 @@ MulticopterPositionControl::test_traject()
         fake_pos_sp = get_pos_sp_from_traject_sp(t);
         fake_vel_sp = get_vel_sp_from_traject_sp(t);
         fake_acc_sp = get_acc_sp_from_traject_sp(t);
-        
-        PX4_INFO("pos_sp :[%.2f %.2f %.2f %.2f]",(double)fake_pos_sp(0),(double)fake_pos_sp(1),(double)fake_pos_sp(2),(double)fake_pos_sp(3));
-        PX4_INFO("vel_sp :[%.2f %.2f %.2f]",(double)fake_vel_sp(0),(double)fake_vel_sp(1),(double)fake_vel_sp(2));
-        PX4_INFO("acc_sp :[%.2f %.2f %.2f]",(double)fake_acc_sp(0),(double)fake_acc_sp(1),(double)fake_acc_sp(2));
+        float delta_t = (t - _traject_sp._t_start_time)*0.000001;
+        PX4_INFO("at [%.4f] pos_sp :[%.2f %.2f %.2f %.2f]",(double)delta_t,(double)fake_pos_sp(0),(double)fake_pos_sp(1),(double)fake_pos_sp(2),(double)fake_pos_sp(3));
 
-        if (t > start_time + 10000000)
+        if (t > start_time + 7000000)
             break;
         
         usleep(100000);
@@ -1695,11 +1789,11 @@ MulticopterPositionControl::traject_receive_task_main()
 				{
                 	traject_sp_reset();
                 }
-				/*
+				
 				PX4_INFO("Traject:\n  total: %d order+1: %d",
 					 raw1.num_keyframe,
 					 raw1.order_p_1);
-					 */
+					 
 				//PX4_INFO("     phase %d :",raw1.index_keyframe);
                 _traject_sp.receive_flag[raw1.index_keyframe - 1] = true;
                 _traject_sp.num_keyframe = raw1.num_keyframe;
@@ -1971,7 +2065,7 @@ MulticopterPositionControl::task_main()
 
 			} else if (_control_mode.flag_control_offboard_enabled) {
 				/* offboard control */
-				control_offboard(dt);
+				control_offboard(dt,t);
 				_mode_auto = false;
 
 			} else {
@@ -2722,7 +2816,7 @@ MulticopterPositionControl::start()
 	_control_task = px4_task_spawn_cmd("mc_pos_control",
 					   SCHED_DEFAULT,
 					   SCHED_PRIORITY_MAX - 5,
-					   1900,
+					   3000,
 					   (px4_main_t)&MulticopterPositionControl::task_main_trampoline,
 					   nullptr);
 
@@ -2834,6 +2928,7 @@ int mc_pos_control_main(int argc, char *argv[])
 			if(pos_control::g_control->_traject_receice_runing != -1) {
 				warnx("receive traject runing");
 				pos_control::g_control->print_traject_sp();
+				pos_control::g_control->print_mode_state();
 			}
 			return 0;
 
