@@ -1499,7 +1499,12 @@ MulticopterPositionControl::get_pos_sp_from_traject_sp(hrt_abstime  _now)
                 {
                     _t_vector = 1;
                 } else {
-                    _t_vector = (float)pow((float)_delta_t,order-i);
+                    //_t_vector = (float)pow((float)_delta_t,order-i);
+                    _t_vector = 1;
+                    for (int l=0; l < ( order-i ) ; l++)
+                    {
+                        _t_vector *= _delta_t;    
+                    }
                 }
                 _traject_scale = _traject_sp.traject[index][i][j];
                 _res(j) += _traject_scale * _t_vector;
@@ -1741,7 +1746,7 @@ MulticopterPositionControl::test_traject()
         float delta_t = (t - _traject_sp._t_start_time)*0.000001;
         PX4_INFO("at [%.4f] pos_sp :[%.2f %.2f %.2f %.2f]",(double)delta_t,(double)fake_pos_sp(0),(double)fake_pos_sp(1),(double)fake_pos_sp(2),(double)fake_pos_sp(3));
 
-        if (t > start_time + 7000000)
+        if (t > start_time + _traject_sp.t[_traject_sp.num_keyframe]*1000000)
             break;
         
         usleep(100000);
