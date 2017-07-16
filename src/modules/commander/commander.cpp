@@ -216,6 +216,7 @@ static float avionics_power_rail_voltage;		// voltage of the avionics power rail
 static bool can_arm_without_gps = false;
 
 static bool ofwhycon_enable = false;    // lu for ofwhycon
+static bool oftraject_enable = false;    // lu for oftraject
 static bool _w_t_vaild = false;    // lu for ofwhycon
 struct whycon_mode_s _whycon_mode = {};
 struct whycon_target_s _whycon_target = {}; 
@@ -739,21 +740,25 @@ bool handle_command(struct vehicle_status_s *status_local, const struct safety_s
 				if (custom_main_mode == PX4_CUSTOM_MAIN_MODE_MANUAL) {
 					/* MANUAL */
                     ofwhycon_enable = false;
+                    oftraject_enable = false;
 					main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_MANUAL, main_state_prev, &status_flags, &internal_state);
 
 				} else if (custom_main_mode == PX4_CUSTOM_MAIN_MODE_ALTCTL) {
 					/* ALTCTL */
                     ofwhycon_enable = false;
+                    oftraject_enable = false;
 					main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_ALTCTL, main_state_prev, &status_flags, &internal_state);
 
 				} else if (custom_main_mode == PX4_CUSTOM_MAIN_MODE_POSCTL) {
 					/* POSCTL */
                     ofwhycon_enable = false;
+                    oftraject_enable = false;
 					main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_POSCTL, main_state_prev, &status_flags, &internal_state);
 
 				} else if (custom_main_mode == PX4_CUSTOM_MAIN_MODE_AUTO) {
 					/* AUTO */
                     ofwhycon_enable = false;
+                    oftraject_enable = false;
 					if (custom_sub_mode > 0) {
 						switch(custom_sub_mode) {
 						case PX4_CUSTOM_SUB_MODE_AUTO_LOITER:
@@ -788,26 +793,35 @@ bool handle_command(struct vehicle_status_s *status_local, const struct safety_s
 				} else if (custom_main_mode == PX4_CUSTOM_MAIN_MODE_ACRO) {
 					/* ACRO */
                     ofwhycon_enable = false;
+                    oftraject_enable = false;
 					main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_ACRO, main_state_prev, &status_flags, &internal_state);
 
 				} else if (custom_main_mode == PX4_CUSTOM_MAIN_MODE_RATTITUDE) {
 					/* RATTITUDE */
                     ofwhycon_enable = false;
+                    oftraject_enable = false;
 					main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_RATTITUDE, main_state_prev, &status_flags, &internal_state);
 
 				} else if (custom_main_mode == PX4_CUSTOM_MAIN_MODE_STABILIZED) {
 					/* STABILIZED */
                     ofwhycon_enable = false;
+                    oftraject_enable = false;
 					main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_STAB, main_state_prev, &status_flags, &internal_state);
 
 				} else if (custom_main_mode == PX4_CUSTOM_MAIN_MODE_OFFBOARD) {
 					/* OFFBOARD */
                     ofwhycon_enable = false;
+                    oftraject_enable = false;
 					main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_OFFBOARD, main_state_prev, &status_flags, &internal_state);
 				} else if (custom_main_mode == PX4_CUSTOM_MAIN_MODE_OFWHYCON) {
 					/* LU - OFWHYCON */
-                    //PX4_INFO("offboard.whycon mode on");
                     ofwhycon_enable = true;
+                    oftraject_enable = false;
+					main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_OFFBOARD, main_state_prev, &status_flags, &internal_state);
+				} else if (custom_main_mode == PX4_CUSTOM_MAIN_MODE_TRAJECT) {
+					/* LU - TRAJECT*/
+                    ofwhycon_enable = false;
+                    oftraject_enable = true;
 					main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_OFFBOARD, main_state_prev, &status_flags, &internal_state);
 				}
 
@@ -816,21 +830,25 @@ bool handle_command(struct vehicle_status_s *status_local, const struct safety_s
 				if (base_mode & VEHICLE_MODE_FLAG_AUTO_ENABLED) {
 					/* AUTO */
                     ofwhycon_enable = false;
+                    oftraject_enable = false;
 					main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_AUTO_MISSION, main_state_prev, &status_flags, &internal_state);
 
 				} else if (base_mode & VEHICLE_MODE_FLAG_MANUAL_INPUT_ENABLED) {
 					if (base_mode & VEHICLE_MODE_FLAG_GUIDED_ENABLED) {
 						/* POSCTL */
                     ofwhycon_enable = false;
+                    oftraject_enable = false;
 						main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_POSCTL, main_state_prev, &status_flags, &internal_state);
 
 					} else if (base_mode & VEHICLE_MODE_FLAG_STABILIZE_ENABLED) {
 						/* STABILIZED */
                     ofwhycon_enable = false;
+                    oftraject_enable = false;
 						main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_STAB, main_state_prev, &status_flags, &internal_state);
 					} else {
 						/* MANUAL */
                     ofwhycon_enable = false;
+                    oftraject_enable = false;
 						main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_MANUAL, main_state_prev, &status_flags, &internal_state);
 					}
 				}
@@ -2216,6 +2234,7 @@ int commander_thread_main(int argc, char *argv[])
             _w_t_vaild = false;
         }
         _whycon_mode.ofwhycon_enable = ofwhycon_enable;
+        _whycon_mode.oftraject_enable = oftraject_enable;
         _whycon_mode.whycon_data_valid = _w_t_vaild;
         _whycon_mode.timestamp = hrt_absolute_time();
         if (lu_whycon_mode_pub != nullptr){

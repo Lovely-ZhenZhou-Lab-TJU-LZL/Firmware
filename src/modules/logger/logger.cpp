@@ -528,7 +528,7 @@ void Logger::add_default_topics()
 	add_topic("actuator_controls_0", 20);
 	add_topic("actuator_controls_1", 20);
 	add_topic("vehicle_local_position", 100);
-	add_topic("vehicle_local_position_setpoint", 50);
+	//add_topic("vehicle_local_position_setpoint", 50);
 	add_topic("vehicle_global_position", 100);
 	add_topic("vehicle_global_velocity_setpoint", 100);
 	add_topic("battery_status", 300);
@@ -552,12 +552,9 @@ void Logger::add_default_topics()
 	add_topic("gps_dump"); //this will only be published if GPS_DUMP_COMM is set
 
 	/* for estimator replay (need to be at full rate) */
-	add_topic("sensor_combined");
-	add_topic("vehicle_gps_position");
-	add_topic("vehicle_land_detected");
-	add_topic("vehicle_wt_message");
-	add_topic("whycon_target");
+	add_topic("vehicle_local_position_setpoint");
 	add_topic("whycon_mode");
+	add_topic("ca_traject_res");
 }
 
 int Logger::add_topics_from_file(const char *fname)

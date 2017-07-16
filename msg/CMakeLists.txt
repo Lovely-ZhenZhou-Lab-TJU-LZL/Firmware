@@ -125,6 +125,7 @@ set(msg_file_names
 	vehicle_wt_message.msg
 	whycon_mode.msg
 	ca_traject.msg
+	ca_traject_res.msg
 	)
 
 # Get absolute paths

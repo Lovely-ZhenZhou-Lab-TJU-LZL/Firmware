@@ -540,46 +540,47 @@ then
 			syslink start
 			mavlink start -d /dev/bridge0 -b 115200 -m osd -r 40000
 		fi
-		if param compare SYS_COMPANION 921600
-		then
-			#mavlink start -d /dev/ttyS2 -b 921600 -m onboard -r 80000 -x
-			mavlink start -d /dev/ttyS2 -b 115200 -m magic -r 10000 -x
-		fi
-		if param compare SYS_COMPANION 57600
-		then
-			#mavlink start -d /dev/ttyS2 -b 57600 -m onboard -r 5000 -x
-			mavlink start -d /dev/ttyS2 -b 115200 -m magic -r 10000 -x
-		fi
-		if param compare SYS_COMPANION 157600
-		then
-			#mavlink start -d /dev/ttyS2 -b 57600 -m osd -r 1000
-			mavlink start -d /dev/ttyS2 -b 115200 -m magic -r 10000 -x
-		fi
-		if param compare SYS_COMPANION 257600
-		then
-			#mavlink start -d /dev/ttyS2 -b 57600 -m magic -r 5000 -x
-			mavlink start -d /dev/ttyS2 -b 115200 -m magic -r 10000 -x
-		fi
-		if param compare SYS_COMPANION 319200
-		then
-			#mavlink start -d /dev/ttyS2 -b 19200 -r 1000
-			mavlink start -d /dev/ttyS2 -b 115200 -m magic -r 10000 -x
-		fi
-		if param compare SYS_COMPANION 338400
-		then
-			#mavlink start -d /dev/ttyS2 -b 38400 -r 1000
-			mavlink start -d /dev/ttyS2 -b 115200 -m magic -r 10000 -x
-		fi
-		if param compare SYS_COMPANION 357600
-		then
-			#mavlink start -d /dev/ttyS2 -b 57600 -r 1000
-			mavlink start -d /dev/ttyS2 -b 115200 -m magic -r 10000 -x
-		fi
-		if param compare SYS_COMPANION 1921600
-		then
-			#mavlink start -d /dev/ttyS2 -b 921600 -r 20000
-			mavlink start -d /dev/ttyS2 -b 115200 -m magic -r 10000 -x
-		fi
+        mavlink start -d /dev/ttyS2 -b 921600 -m onboard -r 70000 -x
+#if param compare SYS_COMPANION 921600
+#then
+##mavlink start -d /dev/ttyS2 -b 921600 -m onboard -r 80000 -x
+#mavlink start -d /dev/ttyS2 -b 921600 -m magic -r 800000 -x
+#fi
+#if param compare SYS_COMPANION 57600
+#then
+##mavlink start -d /dev/ttyS2 -b 57600 -m onboard -r 5000 -x
+#mavlink start -d /dev/ttyS2 -b 921600 -m magic -r 800000 -x
+#fi
+#if param compare SYS_COMPANION 157600
+#then
+##mavlink start -d /dev/ttyS2 -b 57600 -m osd -r 1000
+#mavlink start -d /dev/ttyS2 -b 921600 -m magic -r 800000 -x
+#fi
+#if param compare SYS_COMPANION 257600
+#then
+##mavlink start -d /dev/ttyS2 -b 57600 -m magic -r 5000 -x
+#mavlink start -d /dev/ttyS2 -b 921600 -m magic -r 800000 -x
+#fi
+#if param compare SYS_COMPANION 319200
+#then
+##mavlink start -d /dev/ttyS2 -b 19200 -r 1000
+#mavlink start -d /dev/ttyS2 -b 921600 -m magic -r 800000 
+#fi
+#if param compare SYS_COMPANION 338400
+#then
+##mavlink start -d /dev/ttyS2 -b 38400 -r 1000
+#mavlink start -d /dev/ttyS2 -b 921600 -m magic -r 800000
+#fi
+#if param compare SYS_COMPANION 357600
+#then
+##mavlink start -d /dev/ttyS2 -b 57600 -r 1000
+#mavlink start -d /dev/ttyS2 -b 921600 -m magic -r 800000 
+#fi
+#if param compare SYS_COMPANION 1921600
+#then
+##mavlink start -d /dev/ttyS2 -b 921600 -r 20000
+#mavlink start -d /dev/ttyS2 -b 921600 -m magic -r 800000 
+#fi
 	fi
 
 
@@ -665,9 +666,9 @@ then
 	fi
 
 	# Start MAVLink
-    #mavlink start -b 921600 -r 800000 -d /dev/ttyACM0 -m config -x
+    mavlink start -b 921600 -r 800000 -d /dev/ttyACM0 -m config -x
     # Or nshterm /dev/ttyACM0
-    nshterm /dev/ttyACM0 &
+    # nshterm /dev/ttyACM0 &
 
 	#
 	# Logging
