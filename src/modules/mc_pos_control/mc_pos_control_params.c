@@ -468,3 +468,39 @@ PARAM_DEFINE_FLOAT(MPC_ACC_HOR_MAX, 5.0f);
  * @group Multicopter Position Control
  */
 PARAM_DEFINE_INT32(MPC_ALT_MODE, 0);
+
+/**
+ * trajectory mode forward gain in pos xy
+ *
+ * @min 0
+ * @max 1
+ * @group Multicopter Position Control
+ */
+PARAM_DEFINE_FLOAT(MPC_XY_T_P_FF, 0.8);
+
+/**
+ * trajectory mode forward gain in pos z
+ *
+ * @min 0
+ * @max 1
+ * @group Multicopter Position Control
+ */
+PARAM_DEFINE_FLOAT(MPC_Z_T_P_FF, 0.8);
+
+/**
+ * trajectory mode forward gain in vel xy
+ *
+ * @min 0
+ * @max 1
+ * @group Multicopter Position Control
+ */
+PARAM_DEFINE_FLOAT(MPC_XY_T_V_FF, 0.4);
+
+/**
+ * trajectory mode forward gain in vel z
+ *
+ * @min 0
+ * @max 1
+ * @group Multicopter Position Control
+ */
+PARAM_DEFINE_FLOAT(MPC_Z_T_V_FF, 0.4);

@@ -213,6 +213,10 @@ private:
 		param_t acc_hor_max;
 		param_t alt_mode;
 		param_t opt_recover;
+		param_t traj_pos_xy_ff;
+		param_t traj_pos_z_ff;
+		param_t traj_vel_xy_ff;
+		param_t traj_vel_z_ff;
 
 	}		_params_handles;		/**< handles for interesting parameters */
 
@@ -249,6 +253,9 @@ private:
 		math::Vector<3> vel_max;
 		math::Vector<3> vel_cruise;
 		math::Vector<3> sp_offs_max;
+
+		math::Vector<3> traj_pos_ff;
+		math::Vector<3> traj_vel_ff;
 	}		_params;
 
 	struct map_projection_reference_s _ref_pos;
@@ -272,6 +279,9 @@ private:
 	math::Vector<3> _vel_ff;
 	math::Vector<3> _vel_sp_prev;
 	math::Vector<3> _vel_err_d;		/**< derivative of current velocity */
+
+	math::Vector<3> _traj_vel_d;		/** caculate from the trajectory -lu */
+	math::Vector<3> _traj_acc_d;		/** caculate from the trajectory -lu */
 
 	math::Matrix<3, 3> _R;			/**< rotation matrix from attitude quaternions */
 	float _yaw;				/**< yaw angle (euler) */
@@ -446,6 +456,9 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_params.vel_ff.zero();
 	_params.sp_offs_max.zero();
 
+	_params.traj_pos_ff.zero();
+	_params.traj_vel_ff.zero();
+
 	_pos.zero();
 	_pos_sp.zero();
 	_vel.zero();
@@ -454,6 +467,9 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_vel_ff.zero();
 	_vel_sp_prev.zero();
 	_vel_err_d.zero();
+
+    _traj_vel_d.zero();
+    _traj_acc_d.zero();
 
 	_R.identity();
 
@@ -499,6 +515,10 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_params_handles.acc_hor_max = param_find("MPC_ACC_HOR_MAX");
 	_params_handles.alt_mode = param_find("MPC_ALT_MODE");
 	_params_handles.opt_recover = param_find("VT_OPT_RECOV_EN");
+	_params_handles.traj_pos_xy_ff = param_find("MPC_XY_T_P_FF");
+	_params_handles.traj_pos_z_ff = param_find("MPC_Z_T_P_FF");
+	_params_handles.traj_vel_xy_ff = param_find("MPC_XY_T_V_FF");
+	_params_handles.traj_vel_z_ff = param_find("MPC_Z_T_V_FF");
 
 	/* fetch initial parameter values */
 	parameters_update(true);
@@ -640,6 +660,18 @@ MulticopterPositionControl::parameters_update(bool force)
 		/* takeoff and land velocities should not exceed maximum */
 		_params.tko_speed = fminf(_params.tko_speed, _params.vel_max_up);
 		_params.land_speed = fminf(_params.land_speed, _params.vel_max_down);
+        /* trajectory mode forward feedback control gain */
+		param_get(_params_handles.traj_pos_xy_ff, &v);
+		_params.traj_pos_ff(0) = v;
+		_params.traj_pos_ff(1) = v;
+		param_get(_params_handles.traj_pos_z_ff, &v);
+		_params.traj_pos_ff(2) = v;
+
+		param_get(_params_handles.traj_vel_xy_ff, &v);
+		_params.traj_vel_ff(0) = v;
+		_params.traj_vel_ff(1) = v;
+		param_get(_params_handles.traj_vel_z_ff, &v);
+		_params.traj_vel_ff(2) = v;
 	}
 
 	return OK;
@@ -1024,6 +1056,8 @@ MulticopterPositionControl::control_offboard(float dt)
 
 			_run_alt_control = false; /* request velocity setpoint to be used, instead of position setpoint */
 		}
+            _traj_vel_d.zero();
+            _traj_acc_d.zero();
 
 	} else if (_pos_sp_triplet.current.valid && _whycon_mode.oftraject_enable) {
 		hrt_abstime _now = hrt_absolute_time();
@@ -1033,16 +1067,29 @@ MulticopterPositionControl::control_offboard(float dt)
             _pos_sp(2) = _ca_traject_res.P_d[2];
 			_run_alt_control = true;
             _att_sp.yaw_body = _ca_traject_res.P_d[3];
+
+            _traj_vel_d(0) = _ca_traject_res.vel_d[0];
+            _traj_vel_d(1) = _ca_traject_res.vel_d[1];
+            _traj_vel_d(2) = _ca_traject_res.vel_d[2];
+
+            _traj_acc_d(0) = _ca_traject_res.acc_d[0]/ONE_G;
+            _traj_acc_d(1) = _ca_traject_res.acc_d[1]/ONE_G;
+            _traj_acc_d(2) = _ca_traject_res.acc_d[2]/ONE_G;
+
         } else {
             _pos_sp(0) = _pos_sp_triplet.current.x;
             _pos_sp(1) = _pos_sp_triplet.current.y;
             _pos_sp(2) = _pos_sp_triplet.current.z;
 			_run_alt_control = true;
 			_att_sp.yaw_body = _pos_sp_triplet.current.yaw;
+            _traj_vel_d.zero();
+            _traj_acc_d.zero();
         }
 	} else {
 		reset_pos_sp();
 		reset_alt_sp();
+        _traj_vel_d.zero();
+        _traj_acc_d.zero();
 	}
 }
 
@@ -1558,8 +1605,8 @@ MulticopterPositionControl::task_main()
 			} else {
 				/* run position & altitude controllers, if enabled (otherwise use already computed velocity setpoints) */
 				if (_run_pos_control) {
-					_vel_sp(0) = (_pos_sp(0) - _pos(0)) * _params.pos_p(0);
-					_vel_sp(1) = (_pos_sp(1) - _pos(1)) * _params.pos_p(1);
+					_vel_sp(0) = (_pos_sp(0) - _pos(0)) * _params.pos_p(0) + _traj_vel_d(0) * _params.traj_pos_ff(0);
+					_vel_sp(1) = (_pos_sp(1) - _pos(1)) * _params.pos_p(1) + _traj_vel_d(1) * _params.traj_pos_ff(1);
 				}
 
 				// guard against any bad velocity values
@@ -1603,7 +1650,7 @@ MulticopterPositionControl::task_main()
 				}
 
 				if (_run_alt_control) {
-					_vel_sp(2) = (_pos_sp(2) - _pos(2)) * _params.pos_p(2);
+					_vel_sp(2) = (_pos_sp(2) - _pos(2)) * _params.pos_p(2) + _traj_vel_d(2) * _params.traj_pos_ff(2);
 				}
 
 				/* make sure velocity setpoint is saturated in xy*/
@@ -1795,7 +1842,9 @@ MulticopterPositionControl::task_main()
 						thrust_sp = math::Vector<3>(_pos_sp_triplet.current.a_x, _pos_sp_triplet.current.a_y, _pos_sp_triplet.current.a_z);
 
 					} else {
-						thrust_sp = vel_err.emult(_params.vel_p) + _vel_err_d.emult(_params.vel_d) + thrust_int;
+						thrust_sp = vel_err.emult(_params.vel_p) + _vel_err_d.emult(_params.vel_d)
+                                    + thrust_int - math::Vector<3>(0.0f, 0.0f, _params.thr_hover)
+                                    + _traj_acc_d.emult(_params.traj_vel_ff);
 					}
 
 					if (_pos_sp_triplet.current.type == position_setpoint_s::SETPOINT_TYPE_TAKEOFF
@@ -1972,9 +2021,9 @@ MulticopterPositionControl::task_main()
 						thrust_int(2) += vel_err(2) * _params.vel_i(2) * dt;
 
 						/* protection against flipping on ground when landing */
-						if (thrust_int(2) > 0.0f) {
-							thrust_int(2) = 0.0f;
-						}
+						//if (thrust_int(2) > 0.0f) {
+							//thrust_int(2) = 0.0f;
+						//}
 					}
 
 					/* calculate attitude setpoint from thrust vector */
