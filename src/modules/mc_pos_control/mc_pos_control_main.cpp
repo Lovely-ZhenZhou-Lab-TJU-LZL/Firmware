@@ -270,6 +270,7 @@ private:
 	bool _run_pos_control;
 	bool _run_alt_control;
     bool wt_without_timeout; /** lu whycon check timeout **/
+    bool _traject_has_received;
 
 	math::Vector<3> _pos;
 	math::Vector<3> _pos_sp;
@@ -433,6 +434,7 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_run_pos_control(true),
 	_run_alt_control(true),
     wt_without_timeout(false),
+    _traject_has_received(false),
 	_yaw(0.0f),
 	_in_landing(false),
 	_lnd_reached_ground(false),
@@ -1058,6 +1060,7 @@ MulticopterPositionControl::control_offboard(float dt)
 		}
             _traj_vel_d.zero();
             _traj_acc_d.zero();
+            _traject_has_received = false;
 
 	} else if (_pos_sp_triplet.current.valid && _whycon_mode.oftraject_enable) {
 		hrt_abstime _now = hrt_absolute_time();
@@ -1076,14 +1079,29 @@ MulticopterPositionControl::control_offboard(float dt)
             _traj_acc_d(1) = _ca_traject_res.acc_d[1]/ONE_G;
             _traj_acc_d(2) = _ca_traject_res.acc_d[2]/ONE_G;
 
+            _traject_has_received = true;
+
         } else {
-            _pos_sp(0) = _pos_sp_triplet.current.x;
-            _pos_sp(1) = _pos_sp_triplet.current.y;
-            _pos_sp(2) = _pos_sp_triplet.current.z;
-			_run_alt_control = true;
-			_att_sp.yaw_body = _pos_sp_triplet.current.yaw;
-            _traj_vel_d.zero();
-            _traj_acc_d.zero();
+            if (_traject_has_received)
+            {
+                _pos_sp(0) = _ca_traject_res.P_d[0];
+                _pos_sp(1) = _ca_traject_res.P_d[1];
+                _pos_sp(2) = _ca_traject_res.P_d[2];
+                _run_alt_control = true;
+                _att_sp.yaw_body = _ca_traject_res.P_d[3];
+                _traj_vel_d.zero();
+                _traj_acc_d.zero();
+            }    
+            else
+            {
+                _pos_sp(0) = _pos_sp_triplet.current.x;
+                _pos_sp(1) = _pos_sp_triplet.current.y;
+                _pos_sp(2) = _pos_sp_triplet.current.z;
+                _run_alt_control = true;
+                _att_sp.yaw_body = _pos_sp_triplet.current.yaw;
+                _traj_vel_d.zero();
+                _traj_acc_d.zero();
+            }
         }
 	} else {
 		reset_pos_sp();
