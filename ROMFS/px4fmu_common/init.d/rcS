@@ -540,7 +540,7 @@ then
 			syslink start
 			mavlink start -d /dev/bridge0 -b 115200 -m osd -r 40000
 		fi
-        mavlink start -d /dev/ttyS2 -b 921600 -m onboard -r 70000 -x
+        mavlink start -d /dev/ttyS2 -m onboard -b 115200 -r 70000 -x
 #if param compare SYS_COMPANION 921600
 #then
 ##mavlink start -d /dev/ttyS2 -b 921600 -m onboard -r 80000 -x
