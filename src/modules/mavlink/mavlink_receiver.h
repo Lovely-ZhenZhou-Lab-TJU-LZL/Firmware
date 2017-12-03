@@ -81,9 +81,11 @@
 #include <uORB/topics/whycon_target.h>
 #include <uORB/topics/ca_traject.h>
 #include <uORB/topics/ca_traject_res.h>
+#include <uORB/topics/ap_func_res.h>
 
 #include <v2.0/common/mavlink_msg_ca_traject.h>
 #include <v2.0/common/mavlink_msg_ca_traject_res.h>
+#include <v2.0/common/mavlink_msg_ap_uavs_func_res.h>
 
 #include "mavlink_ftp.h"
 #define PX4_EPOCH_SECS 1234567890ULL
@@ -154,6 +156,7 @@ private:
 	//void handle_message_whycon_target(mavlink_message_t *msg);
 	void handle_message_ca_traject_msg(mavlink_message_t *msg);
 	void handle_message_ca_traject_res_msg(mavlink_message_t *msg);
+	void handle_message_ap_uavs_func_res_msg(mavlink_message_t *msg);
 	void *receive_thread(void *arg);
 
 	/**
@@ -222,6 +225,7 @@ private:
 	orb_advert_t _whycon_target_pub;
 	orb_advert_t _ca_traj_msg_pub;
 	orb_advert_t _ca_traj_res_msg_pub;
+    orb_advert_t _ap_func_res_msg_pub;
 	orb_advert_t _vision_position_pub;
 	orb_advert_t _telemetry_status_pub;
 	orb_advert_t _rc_pub;

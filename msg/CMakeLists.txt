@@ -126,6 +126,7 @@ set(msg_file_names
 	whycon_mode.msg
 	ca_traject.msg
 	ca_traject_res.msg
+    ap_func_res.msg
 	)
 
 # Get absolute paths

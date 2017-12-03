@@ -534,7 +534,7 @@ void Logger::add_default_topics()
 	add_topic("battery_status", 300);
 	add_topic("system_power", 300);
 	add_topic("position_setpoint_triplet", 10);
-	add_topic("att_pos_mocap", 50);
+	//add_topic("att_pos_mocap", 50);
 	add_topic("vision_position_estimate", 50);
 	add_topic("optical_flow", 50);
 	add_topic("rc_channels");
@@ -555,6 +555,8 @@ void Logger::add_default_topics()
 	add_topic("vehicle_local_position_setpoint");
 	add_topic("whycon_mode");
 	add_topic("ca_traject_res");
+	add_topic("att_pos_mocap");
+	add_topic("ap_func_res");
 }
 
 int Logger::add_topics_from_file(const char *fname)
