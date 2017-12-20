@@ -86,6 +86,7 @@ static bool inav_verbose_mode = false;
 
 static const hrt_abstime vision_topic_timeout = 500000;	// Vision topic timeout = 0.5s
 static const hrt_abstime mocap_topic_timeout = 500000;		// Mocap topic timeout = 0.5s
+static const hrt_abstime mocap_topic_long_timeout = 2000000;		// Mocap topic timeout = 2s
 static const hrt_abstime gps_topic_timeout = 500000;		// GPS topic timeout = 0.5s
 static const hrt_abstime flow_topic_timeout = 1000000;	// optical flow topic timeout = 1s
 static const hrt_abstime lidar_timeout = 150000;	// lidar timeout = 150ms
@@ -343,6 +344,7 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 	bool flow_accurate = false;		// flow should be accurate (this flag not updated if flow_valid == false)
 	bool vision_valid = false;		// vision is valid
 	bool mocap_valid = false;		// mocap is valid
+	bool mocap_valid_long = false;		// mocap is valid
 
 	/* declare and safely initialize all structs */
 	struct actuator_controls_s actuator;
@@ -818,6 +820,7 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 						z_est[0] = mocap.z;
 
 						mocap_valid = true;
+                        mocap_valid_long = true;
 
 						warnx("MOCAP data valid");
 						mavlink_log_info(&mavlink_log_pub, "[inav] MOCAP data valid");
@@ -972,6 +975,12 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 			warnx("MOCAP timeout");
 			mavlink_log_info(&mavlink_log_pub, "[inav] MOCAP timeout");
 		}
+
+        if (mocap_valid_long && (t > (mocap.timestamp + mocap_topic_long_timeout))) {
+            mocap_valid_long = false;
+            warnx("MOCAP long timeout");
+			mavlink_log_info(&mavlink_log_pub, "[inav] MOCAP long timeout, disarm");
+        }
 
 		/* check for lidar measurement timeout */
 		if (lidar_valid && (t > (lidar_time + lidar_timeout))) {
@@ -1335,6 +1344,8 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 			local_pos.dist_bottom_valid = dist_bottom_valid;
 			local_pos.eph = eph;
 			local_pos.epv = epv;
+            local_pos.using_mocap = mocap_valid_long;
+            local_pos.long_timeout_mocap = !mocap_valid_long;
 
 			if (local_pos.dist_bottom_valid) {
 				local_pos.dist_bottom = dist_ground;

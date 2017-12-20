@@ -215,6 +215,7 @@ MavlinkReceiver::handle_message(mavlink_message_t *msg)
 
     case MAVLINK_MSG_ID_AP_UAVS_FUNC_RES:
         handle_message_ap_uavs_func_res_msg(msg);
+        break;
 
 	case MAVLINK_MSG_ID_SET_POSITION_TARGET_LOCAL_NED:
 		handle_message_set_position_target_local_ned(msg);

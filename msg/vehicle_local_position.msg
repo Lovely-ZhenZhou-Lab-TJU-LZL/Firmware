@@ -33,3 +33,7 @@ uint64 surface_bottom_timestamp		# Time when new bottom surface found since syst
 bool dist_bottom_valid			# true if distance to bottom surface is valid
 float32 eph				# Standard deviation of horizontal position error, (metres)
 float32 epv				# Standard deviation of vertical position error, (metres)
+
+# Safe for mocap
+bool using_mocap
+bool long_timeout_mocap

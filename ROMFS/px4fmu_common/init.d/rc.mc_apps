@@ -19,7 +19,8 @@ fi
 if param compare SYS_MC_EST_GROUP 1
 then
 	attitude_estimator_q start
-	local_position_estimator start
+#local_position_estimator start
+	position_estimator_inav start
 fi
 
 # EKF

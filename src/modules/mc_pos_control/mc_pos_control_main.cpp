@@ -80,6 +80,8 @@
 #include <uORB/topics/whycon_mode.h>
 #include <uORB/topics/whycon_target.h>
 #include <uORB/topics/ca_traject_res.h>
+#include <uORB/topics/ap_func_res.h>
+#include <uORB/topics/ap_func_output.h>
 
 #include <systemlib/systemlib.h>
 #include <systemlib/mavlink_log.h>
@@ -147,10 +149,12 @@ private:
 	int		_whycon_target_sub;		/**< lu - whycon target */
 	int		_vehicle_wt_message_sub;		/**< lu - whycon message */
 	int     _ca_traject_res_sub;		/**< lu - ca_traject_res message */
+    int     _ap_func_res_sub;
 
 	orb_advert_t	_att_sp_pub;			/**< attitude setpoint publication */
 	orb_advert_t	_local_pos_sp_pub;		/**< vehicle local position setpoint publication */
 	orb_advert_t	_global_vel_sp_pub;		/**< vehicle global velocity setpoint publication */
+    orb_advert_t    _ap_func_output_pub;    /**< ap func output publication */
 
 	orb_id_t _attitude_setpoint_id;
 
@@ -165,11 +169,14 @@ private:
 	struct position_setpoint_triplet_s		_pos_sp_triplet;	/**< vehicle global position setpoint triplet */
 	struct vehicle_local_position_setpoint_s	_local_pos_sp;		/**< vehicle local position setpoint */
 	struct vehicle_global_velocity_setpoint_s	_global_vel_sp;		/**< vehicle global velocity setpoint */
+    struct ap_func_output_s             _ap_func_output;
 
     struct whycon_mode_s _whycon_mode;
     struct whycon_target_s _whycon_target;
     struct vehicle_wt_message_s _vehicle_wt_message;
     struct ca_traject_res_s _ca_traject_res;
+
+    struct ap_func_res_s _ap_func_res;
 
 	control::BlockParamFloat _manual_thr_min;
 	control::BlockParamFloat _manual_thr_max;
@@ -397,11 +404,13 @@ MulticopterPositionControl::MulticopterPositionControl() :
     _whycon_target_sub(-1),
     _vehicle_wt_message_sub(-1),
     _ca_traject_res_sub(-1),
+    _ap_func_res_sub(-1),
 
 	/* publications */
 	_att_sp_pub(nullptr),
 	_local_pos_sp_pub(nullptr),
 	_global_vel_sp_pub(nullptr),
+    _ap_func_output_pub(nullptr),
 	_attitude_setpoint_id(0),
 	_vehicle_status{},
 	_vehicle_land_detected{},
@@ -414,10 +423,12 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_pos_sp_triplet{},
 	_local_pos_sp{},
 	_global_vel_sp{},
+    _ap_func_output{},
     _whycon_mode{},
     _whycon_target{},
     _vehicle_wt_message{},
     _ca_traject_res{},
+    _ap_func_res{},
 	_manual_thr_min(this, "MANTHR_MIN"),
 	_manual_thr_max(this, "MANTHR_MAX"),
 	_vel_x_deriv(this, "VELD"),
@@ -771,6 +782,12 @@ MulticopterPositionControl::poll_subscriptions()
 
 	if (updated) {
 		orb_copy(ORB_ID(ca_traject_res), _ca_traject_res_sub, &_ca_traject_res);
+	}
+
+	orb_check(_ap_func_res_sub, &updated);
+
+	if (updated) {
+		orb_copy(ORB_ID(ap_func_res), _ap_func_res_sub, &_ap_func_res);
 	}
 }
 
@@ -1391,6 +1408,7 @@ MulticopterPositionControl::task_main()
 	_whycon_target_sub = orb_subscribe(ORB_ID(whycon_target));		/**< lu - whycon target */
 	_vehicle_wt_message_sub = orb_subscribe(ORB_ID(vehicle_wt_message));		/**< lu - whycon message */
 	_ca_traject_res_sub = orb_subscribe(ORB_ID(ca_traject_res));		/**< lu - ca_traject_res message */
+    _ap_func_res_sub = orb_subscribe(ORB_ID(ap_func_res));
 
 	parameters_update(true);
 
@@ -1689,6 +1707,76 @@ MulticopterPositionControl::task_main()
 				if (_vel_sp(2) >  _params.vel_max_down) {
 					_vel_sp(2) = _params.vel_max_down;
 				}
+
+                /* start ap function */
+                /* add by Lu, add ap_func_res for avoid potential function */
+                if (t < _ap_func_res.timestamp + 500000) {
+                    math::Vector<3> _ap_res;
+                    _ap_res(0) = _ap_func_res.virtual_ctrl_vel[0];
+                    _ap_res(1) = _ap_func_res.virtual_ctrl_vel[1];
+                    _ap_res(2) = _ap_func_res.virtual_ctrl_vel[2];
+
+                    math::Vector<3> _ap_res_without_z;
+                    _ap_res_without_z = _ap_res;
+                    _ap_res_without_z(2) = 0.0f;
+
+                    math::Vector<3> _vel_sp_without_z;
+                    _vel_sp_without_z = _vel_sp;
+                    _vel_sp_without_z(2) = 0.0f;
+
+                    float norm_vel_ctl = _vel_sp_without_z.length();
+                    float norm_Va_ctl = _ap_res_without_z.length();
+
+                    _ap_func_output.in_trape = false;
+                    _ap_func_output.cos_alpha = 1.0f;
+
+                    if (norm_vel_ctl > 0.1f && norm_Va_ctl > 0.1f) {
+                        float cos_alpha = - _ap_res_without_z * _vel_sp_without_z / ( norm_Va_ctl*norm_vel_ctl );
+                        _ap_func_output.cos_alpha = cos_alpha;
+                        if (cos_alpha > 0.866f) {/* cos 30 degree */
+                            matrix::Eulerf _rotate_euler(0.0f, 0.0f, -M_PI_F/6.0f);
+                            matrix::Dcmf _rotate_dcm = _rotate_euler;
+                            math::Vector<3> _temp_ap_res;
+                            _temp_ap_res(0) = _rotate_dcm(0,0)*_ap_res(0) +_rotate_dcm(0,1)*_ap_res(1) +_rotate_dcm(0,2)*_ap_res(2);
+                            _temp_ap_res(1) = _rotate_dcm(1,0)*_ap_res(0) +_rotate_dcm(1,1)*_ap_res(1) +_rotate_dcm(1,2)*_ap_res(2);
+                            _temp_ap_res(2) = _rotate_dcm(2,0)*_ap_res(0) +_rotate_dcm(2,1)*_ap_res(1) +_rotate_dcm(2,2)*_ap_res(2);
+                            _ap_res = _temp_ap_res;
+                            _ap_func_output.in_trape = true;
+                        }
+                    }
+                    _ap_func_output.timestamp = hrt_absolute_time();
+                    _ap_func_output.final_output[0] = _ap_res(0);
+                    _ap_func_output.final_output[1] = _ap_res(1);
+                    _ap_func_output.final_output[2] = _ap_res(2);
+
+                    /* publish apfunc output res */
+                    if (_ap_func_output_pub != nullptr) {
+                        orb_publish(ORB_ID(ap_func_output), _ap_func_output_pub, &_ap_func_output);
+                    } else {
+                       _ap_func_output_pub = orb_advertise(ORB_ID(ap_func_output), &_ap_func_output);
+                    }
+                    _vel_sp = _vel_sp + _ap_res;
+                }
+                /* do saturation again by Lu */
+				vel_norm_xy = sqrtf(_vel_sp(0) * _vel_sp(0) +
+							  _vel_sp(1) * _vel_sp(1));
+
+				if (vel_norm_xy > _params.vel_max(0)) {
+					/* note assumes vel_max(0) == vel_max(1) */
+					_vel_sp(0) = _vel_sp(0) * _params.vel_max(0) / vel_norm_xy;
+					_vel_sp(1) = _vel_sp(1) * _params.vel_max(1) / vel_norm_xy;
+				}
+
+				/* make sure velocity setpoint is saturated in z*/
+				if (_vel_sp(2) < -1.0f * _params.vel_max_up) {
+					_vel_sp(2) = -1.0f * _params.vel_max_up;
+				}
+
+				if (_vel_sp(2) >  _params.vel_max_down) {
+					_vel_sp(2) = _params.vel_max_down;
+				}
+                /* ap function end */
+                
 
 				if (!_control_mode.flag_control_position_enabled) {
 					_reset_pos_sp = true;

@@ -1972,7 +1972,7 @@ Mavlink::task_main(int argc, char *argv[])
 
 	case MAVLINK_MODE_ONBOARD:
 		configure_stream("ATTITUDE", 20.0f);
-		configure_stream("LOCAL_POSITION_NED", 20.0f);
+		configure_stream("LOCAL_POSITION_NED", 40.0f);
 		configure_stream("SYS_STATUS", 1.0f);
 		//configure_stream("EXTENDED_SYS_STATE", 2.0f);
 		//configure_stream("HIGHRES_IMU", 5.0f);

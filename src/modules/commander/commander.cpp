@@ -2156,6 +2156,11 @@ int commander_thread_main(int argc, char *argv[])
 			    && local_eph_good, &(status_flags.condition_local_position_valid), &status_changed);
 		check_valid(local_position.timestamp, POSITION_TIMEOUT, local_position.z_valid,
 			    &(status_flags.condition_local_altitude_valid), &status_changed);
+        
+        // add by lu for safe mocap
+		if (armed.armed && local_position.long_timeout_mocap && internal_state.main_state == commander_state_s::MAIN_STATE_OFFBOARD) {
+			arm_disarm(false, &mavlink_log_pub, "auto disarm on mocap timeout");
+		}
 
 		/* Update land detector */
 		orb_check(land_detector_sub, &updated);

@@ -557,6 +557,7 @@ void Logger::add_default_topics()
 	add_topic("ca_traject_res");
 	add_topic("att_pos_mocap");
 	add_topic("ap_func_res");
+    add_topic("ap_func_output");
 }
 
 int Logger::add_topics_from_file(const char *fname)

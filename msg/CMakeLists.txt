@@ -127,6 +127,7 @@ set(msg_file_names
 	ca_traject.msg
 	ca_traject_res.msg
     ap_func_res.msg
+    ap_func_output.msg
 	)
 
 # Get absolute paths
