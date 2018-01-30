@@ -121,7 +121,8 @@ set(msg_files
 	vehicle_status_flags.msg
 	vtol_vehicle_status.msg
 	wind_estimate.msg
-    controller_scope.msg
+    	controller_scope.msg
+	controller_rate_scope.msg
 	)
 
 px4_add_git_submodule(TARGET git_gencpp PATH tools/gencpp)

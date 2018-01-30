@@ -1,0 +1,9 @@
+float32[3] omega_err
+float32 s1_norm_pr
+float32 s1_norm_yaw
+float32[3] att_Tau
+float32[3] model_poly
+float32[4] all_Tau
+float32[4] u
+float32[2] inf_s_pr
+float32 inf_s_yaw
