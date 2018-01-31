@@ -1188,10 +1188,10 @@ MulticopterAttitudeControl::control_attitude_rates(float dt)
 {
 
     float eps = 0.01f;
-    float k1_pr = 0.2f;
-    float k2_pr = 0.05f;
+    float k1_pr = 0.15f;//0.2f;
+    float k2_pr = 0.0f;//0.05f;
     float k1_yaw = 0.02f;
-    float k2_yaw = 0.01f;
+    float k2_yaw = 0.0f;//0.001f;
 
 	/* reset integral if disarmed */
 	if (!_v_control_mode.flag_armed || !_vehicle_status.is_rotary_wing) {
@@ -1208,7 +1208,7 @@ MulticopterAttitudeControl::control_attitude_rates(float dt)
 */
 	/* angular rates error */
 	math::Vector<3> rates_err = _rates_sp - rates;
-    math::Vector<3> omega_err = rates - R.transposed() * R_sp * _rates_sp;
+    math::Vector<3> omega_err = rates - _rates_sp;//R.transposed() * R_sp * _rates_sp;
 
 	/*_att_control = rates_p_scaled.emult(rates_err) +
 		       _rates_int +
@@ -1279,6 +1279,9 @@ MulticopterAttitudeControl::control_attitude_rates(float dt)
     } else {
         _controller_rate_scope_pub = orb_advertise(ORB_ID(controller_rate_scope), &_controller_rate_scope);
     }
+
+	math::Vector<3> rates_d_scaled = _params.rate_d.emult(pid_attenuations(_params.tpa_breakpoint_d, _params.tpa_rate_d));
+    _att_control = _att_control + rates_d_scaled.emult(_rates_prev - rates) / dt;
 
     if (_thrust_sp > MIN_TAKEOFF_THRUST) {
         inf_s_pr(0) = inf_s_pr(0) + omega_err(0) * inv_s_norm_pr * dt;

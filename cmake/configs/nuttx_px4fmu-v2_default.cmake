@@ -8,7 +8,7 @@ set(config_module_list
 	# Board support modules
 	#
 	#drivers/adis16448
-	drivers/airspeed
+    #drivers/airspeed
 	#drivers/blinkm
 	#drivers/bmi160
 	#drivers/bmp280
@@ -35,8 +35,8 @@ set(config_module_list
 	#drivers/mkblctrl
 	drivers/mpu6000
 	drivers/mpu9250
-	drivers/ms4525_airspeed
-	drivers/ms5525_airspeed
+    #drivers/ms4525_airspeed
+    #drivers/ms5525_airspeed
 	drivers/ms5611
 	#drivers/oreoled
 	#drivers/protocol_splitter
@@ -46,7 +46,7 @@ set(config_module_list
 	drivers/px4fmu
 	drivers/px4io
 	drivers/rgbled
-	drivers/sdp3x_airspeed
+    #drivers/sdp3x_airspeed
 	drivers/sf0x
 	drivers/sf1xx
 	#drivers/snapdragon_rc_pwm
@@ -120,10 +120,10 @@ set(config_module_list
 	#
 	# Vehicle Control
 	#
-	modules/fw_att_control
-	modules/fw_pos_control_l1
-	modules/gnd_att_control
-	modules/gnd_pos_control
+    #modules/fw_att_control
+    #modules/fw_pos_control_l1
+    #modules/gnd_att_control
+    #modules/gnd_pos_control
 	modules/mc_att_control
 	modules/mc_pos_control
 	modules/vtol_att_control
