@@ -180,8 +180,8 @@ MultirotorMixer::mix(float *outputs, unsigned space)
 	_saturation_status.value = 0;
 
 	// thrust boost parameters
-	float thrust_increase_factor = 1.5f;
-	float thrust_decrease_factor = 0.6f;
+	float thrust_increase_factor = 1.9f;//1.5f;
+	float thrust_decrease_factor = 0.1f;//0.6f;
 
 	/* perform initial mix pass yielding unbounded outputs, ignore yaw */
 	for (unsigned i = 0; i < _rotor_count; i++) {
@@ -262,7 +262,7 @@ MultirotorMixer::mix(float *outputs, unsigned space)
 		float out = (roll * _rotors[i].roll_scale +
 			     pitch * _rotors[i].pitch_scale) * roll_pitch_scale +
 			    yaw * _rotors[i].yaw_scale +
-			    thrust + boost;
+			    thrust;// + boost;
 
 		out *= _rotors[i].out_scale;
 

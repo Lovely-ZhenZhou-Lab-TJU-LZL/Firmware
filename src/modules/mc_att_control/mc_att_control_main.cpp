@@ -1187,11 +1187,11 @@ void
 MulticopterAttitudeControl::control_attitude_rates(float dt)
 {
 
-    float eps = 0.01f;
-    float k1_pr = 0.15f;//0.2f;
-    float k2_pr = 0.0f;//0.05f;
-    float k1_yaw = 0.02f;
-    float k2_yaw = 0.0f;//0.001f;
+    float eps = 0.2f;//0.01f;
+    float k1_pr = 0.1f;//0.15f;//0.2f;
+    float k2_pr = 0.01f;//0.05f;
+    float k1_yaw = 0.015f;//0.02f;
+    float k2_yaw = 0.0008f;//0.001f;
 
 	/* reset integral if disarmed */
 	if (!_v_control_mode.flag_armed || !_vehicle_status.is_rotary_wing) {
@@ -1208,7 +1208,7 @@ MulticopterAttitudeControl::control_attitude_rates(float dt)
 */
 	/* angular rates error */
 	math::Vector<3> rates_err = _rates_sp - rates;
-    math::Vector<3> omega_err = rates - _rates_sp;//R.transposed() * R_sp * _rates_sp;
+    math::Vector<3> omega_err = rates - R.transposed() * R_sp * _rates_sp;
 
 	/*_att_control = rates_p_scaled.emult(rates_err) +
 		       _rates_int +
@@ -1216,15 +1216,15 @@ MulticopterAttitudeControl::control_attitude_rates(float dt)
 		       _params.rate_ff.emult(_rates_sp);*/
 
     /* roll pitch sliding surface */
-    //float n_e1 = 0.2f;
+    float n_e1 = 0.4f;
     float s1_norm_pr = (float)sqrt( omega_err(0) * omega_err(0) + omega_err(1) * omega_err(1) );
     float inv_s_norm_pr = 1.0f / (s1_norm_pr + eps);
-    float inv_s_pr_ne1 = 1.0f;// / ((float)pow(s1_norm_pr, n_e1) + eps);
+    float inv_s_pr_ne1 = 1.0f / ((float)pow(s1_norm_pr, n_e1) + eps);
     /* yaw sliding surface */
-    //float n_e2 = 0.1f;
+    float n_e2 = 0.4f;
     float s1_norm_yaw = fabsf(omega_err(2));
     float inv_s_norm_yaw = 1.0f / (s1_norm_yaw + eps);
-    float inv_s_yaw_ne1 = 1.0f;// / ((float)pow(s1_norm_yaw, n_e2) + eps);
+    float inv_s_yaw_ne1 = 1.0f / ((float)pow(s1_norm_yaw, n_e2) + eps);
 
     math::Vector<3> _att_Tau;
     /* roll pitch controller */
