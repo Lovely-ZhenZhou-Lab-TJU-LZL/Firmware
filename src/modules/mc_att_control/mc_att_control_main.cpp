@@ -334,6 +334,8 @@ private:
 	 */
     math::Vector<3> get_u_from_Tau(math::Vector<4> Tau);
 
+    float fal(float e, float norm_e,float alpha, float delta);
+
 	/**
 	 * Shim for calling task_main from task_create.
 	 */
@@ -1178,6 +1180,22 @@ MulticopterAttitudeControl::get_u_from_Tau(math::Vector<4> Tau)
     return u;
 }
 
+float
+MulticopterAttitudeControl::fal(float e, float norm_e,float alpha, float delta)
+{
+    float y;
+    float abs_e = fabsf(e);
+    if(abs_e <= delta)
+    {
+        y = e / powf(delta, 1.0f - alpha);
+    }
+    else
+    {
+        y = e / norm_e * powf(abs_e, alpha);
+    }
+    return y;
+}
+
 /*
  * Attitude rates controller.
  * Input: '_rates_sp' vector, '_thrust_sp'
@@ -1219,19 +1237,19 @@ MulticopterAttitudeControl::control_attitude_rates(float dt)
     float n_e1 = 0.4f;
     float s1_norm_pr = (float)sqrt( omega_err(0) * omega_err(0) + omega_err(1) * omega_err(1) );
     float inv_s_norm_pr = 1.0f / (s1_norm_pr + eps);
-    float inv_s_pr_ne1 = 1.0f / ((float)pow(s1_norm_pr, n_e1) + eps);
+    //float inv_s_pr_ne1 = 1.0f / ((float)pow(s1_norm_pr, n_e1) + eps);
     /* yaw sliding surface */
     float n_e2 = 0.4f;
     float s1_norm_yaw = fabsf(omega_err(2));
     float inv_s_norm_yaw = 1.0f / (s1_norm_yaw + eps);
-    float inv_s_yaw_ne1 = 1.0f / ((float)pow(s1_norm_yaw, n_e2) + eps);
+    //float inv_s_yaw_ne1 = 1.0f / ((float)pow(s1_norm_yaw, n_e2) + eps);
 
     math::Vector<3> _att_Tau;
     /* roll pitch controller */
-    _att_Tau(0) = - k1_pr * omega_err(0) * inv_s_pr_ne1 - k2_pr * inf_s_pr(0);
-    _att_Tau(1) = - k1_pr * omega_err(1) * inv_s_pr_ne1 - k2_pr * inf_s_pr(1);
+    _att_Tau(0) = - k1_pr * fal(omega_err(0), s1_norm_pr, 1.0f - n_e1, 0.1f) - k2_pr * inf_s_pr(0);
+    _att_Tau(1) = - k1_pr * fal(omega_err(1), s1_norm_pr, 1.0f - n_e1, 0.1f) - k2_pr * inf_s_pr(1);
     /* yaw controller */
-    _att_Tau(2) = - k1_yaw * omega_err(2) * inv_s_yaw_ne1 - k2_yaw * inf_s_yaw;
+    _att_Tau(2) = - k1_yaw * fal(omega_err(2), s1_norm_yaw, 1.0f - n_e2, 0.1f) - k2_yaw * inf_s_yaw;
 
     math::Matrix<3, 3> rates_hat;
     rates_hat.zero();
