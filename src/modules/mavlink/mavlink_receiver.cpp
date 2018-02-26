@@ -123,6 +123,7 @@ MavlinkReceiver::MavlinkReceiver(Mavlink *parent) :
 	_rates_sp_pub(nullptr),
 	_pos_sp_triplet_pub(nullptr),
 	_att_pos_mocap_pub(nullptr),
+	_ca_traj_res_msg_pub(nullptr),
 	_vision_position_pub(nullptr),
 	_vision_attitude_pub(nullptr),
 	_telemetry_status_pub(nullptr),
@@ -234,6 +235,9 @@ MavlinkReceiver::handle_message(mavlink_message_t *msg)
 	case MAVLINK_MSG_ID_ATT_POS_MOCAP:
 		handle_message_att_pos_mocap(msg);
 		break;
+
+	case MAVLINK_MSG_ID_CA_TRAJECT_RES:
+		handle_message_ca_traject_res_msg(msg);
 
 	case MAVLINK_MSG_ID_SET_POSITION_TARGET_LOCAL_NED:
 		handle_message_set_position_target_local_ned(msg);
@@ -815,6 +819,30 @@ MavlinkReceiver::handle_message_att_pos_mocap(mavlink_message_t *msg)
 
 	} else {
 		orb_publish(ORB_ID(att_pos_mocap), _att_pos_mocap_pub, &att_pos_mocap);
+	}
+}
+
+void
+MavlinkReceiver::handle_message_ca_traject_res_msg(mavlink_message_t *msg) {
+	mavlink_ca_traject_res_t traj;
+	mavlink_msg_ca_traject_res_decode(msg, &traj);
+
+	struct ca_traject_res_s f;
+	memset(&f, 0, sizeof(f));
+	f.timestamp = hrt_absolute_time();
+	f.PC_time_usec = traj.PC_time_usec;
+	f.onboard_PC_time_usec = traj.time_usec;
+	/* x y z yaw */
+	for (int i=0 ; i<4 ; i++) {
+		f.P_d[i] = traj.P_d[i];
+		f.vel_d[i] = traj.vel_d[i];
+		f.acc_d[i] = traj.acc_d[i];
+	}
+
+	if (_ca_traj_res_msg_pub == nullptr) {
+		_ca_traj_res_msg_pub = orb_advertise(ORB_ID(ca_traject_res), &f);
+	} else {
+		orb_publish(ORB_ID(ca_traject_res),_ca_traj_res_msg_pub, &f);
 	}
 }
 

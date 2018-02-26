@@ -124,6 +124,7 @@ set(msg_files
   controller_scope.msg
 	controller_rate_scope.msg
 	ca_traject_res.msg
+	modify_mode.msg
 	)
 
 px4_add_git_submodule(TARGET git_gencpp PATH tools/gencpp)

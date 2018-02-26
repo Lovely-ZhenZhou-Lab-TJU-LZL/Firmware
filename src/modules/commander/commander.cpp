@@ -122,6 +122,7 @@
 #include <uORB/topics/vehicle_status_flags.h>
 #include <uORB/topics/vtol_vehicle_status.h>
 #include <uORB/topics/estimator_status.h>
+#include <uORB/topics/modify_mode.h>
 
 typedef enum VEHICLE_MODE_FLAG
 {
@@ -258,6 +259,9 @@ static uint8_t arm_requirements = ARM_REQ_NONE;
 static bool _last_condition_global_position_valid = false;
 
 static struct vehicle_land_detected_s land_detector = {};
+
+static bool oftraject_enable = false;
+struct modify_mode_s _modify_mode = {};
 
 /**
  * The daemon app only briefly exists to start
@@ -822,19 +826,23 @@ bool handle_command(struct vehicle_status_s *status_local, const struct safety_s
 				/* use autopilot-specific mode */
 				if (custom_main_mode == PX4_CUSTOM_MAIN_MODE_MANUAL) {
 					/* MANUAL */
+					oftraject_enable = false;
 					main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_MANUAL, main_state_prev, &status_flags, &internal_state);
 
 				} else if (custom_main_mode == PX4_CUSTOM_MAIN_MODE_ALTCTL) {
 					/* ALTCTL */
+					oftraject_enable = false;
 					main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_ALTCTL, main_state_prev, &status_flags, &internal_state);
 
 				} else if (custom_main_mode == PX4_CUSTOM_MAIN_MODE_POSCTL) {
 					/* POSCTL */
+					oftraject_enable = false;
 					reset_posvel_validity(global_pos, local_pos, changed);
 					main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_POSCTL, main_state_prev, &status_flags, &internal_state);
 
 				} else if (custom_main_mode == PX4_CUSTOM_MAIN_MODE_AUTO) {
 					/* AUTO */
+					oftraject_enable = false;
 					if (custom_sub_mode > 0) {
 						reset_posvel_validity(global_pos, local_pos, changed);
 						switch(custom_sub_mode) {
@@ -873,19 +881,27 @@ bool handle_command(struct vehicle_status_s *status_local, const struct safety_s
 
 				} else if (custom_main_mode == PX4_CUSTOM_MAIN_MODE_ACRO) {
 					/* ACRO */
+					oftraject_enable = false;
 					main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_ACRO, main_state_prev, &status_flags, &internal_state);
 
 				} else if (custom_main_mode == PX4_CUSTOM_MAIN_MODE_RATTITUDE) {
 					/* RATTITUDE */
+					oftraject_enable = false;
 					main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_RATTITUDE, main_state_prev, &status_flags, &internal_state);
 
 				} else if (custom_main_mode == PX4_CUSTOM_MAIN_MODE_STABILIZED) {
 					/* STABILIZED */
+					oftraject_enable = false;
 					main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_STAB, main_state_prev, &status_flags, &internal_state);
 
 				} else if (custom_main_mode == PX4_CUSTOM_MAIN_MODE_OFFBOARD) {
 					reset_posvel_validity(global_pos, local_pos, changed);
 					/* OFFBOARD */
+					oftraject_enable = false;
+					main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_OFFBOARD, main_state_prev, &status_flags, &internal_state);
+				} else if (custom_main_mode == PX4_CUSTOM_MAIN_MODE_TRAJECT) {
+					/* LU - TRAJECT */
+					oftraject_enable = true;
 					main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_OFFBOARD, main_state_prev, &status_flags, &internal_state);
 				}
 
@@ -893,18 +909,22 @@ bool handle_command(struct vehicle_status_s *status_local, const struct safety_s
 				/* use base mode */
 				if (base_mode & VEHICLE_MODE_FLAG_AUTO_ENABLED) {
 					/* AUTO */
+					oftraject_enable = false;
 					main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_AUTO_MISSION, main_state_prev, &status_flags, &internal_state);
 
 				} else if (base_mode & VEHICLE_MODE_FLAG_MANUAL_INPUT_ENABLED) {
 					if (base_mode & VEHICLE_MODE_FLAG_GUIDED_ENABLED) {
 						/* POSCTL */
+						oftraject_enable = false;
 						main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_POSCTL, main_state_prev, &status_flags, &internal_state);
 
 					} else if (base_mode & VEHICLE_MODE_FLAG_STABILIZE_ENABLED) {
 						/* STABILIZED */
+						oftraject_enable = false;
 						main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_STAB, main_state_prev, &status_flags, &internal_state);
 					} else {
 						/* MANUAL */
+						oftraject_enable = false;
 						main_ret = main_state_transition(status_local, commander_state_s::MAIN_STATE_MANUAL, main_state_prev, &status_flags, &internal_state);
 					}
 				}
@@ -1683,6 +1703,9 @@ int commander_thread_main(int argc, char *argv[])
 	memset(&vtol_status, 0, sizeof(vtol_status));
 	vtol_status.vtol_in_rw_mode = true;		//default for vtol is rotary wing
 
+	/* LU- modify mode publisher topic */
+	orb_advert_t lu_modify_mode_pub = nullptr;//orb_advertise(ORB_ID(modify_mode), &_modify_mode);
+
 	/* subscribe to estimator status topic */
 	int estimator_status_sub = orb_subscribe(ORB_ID(estimator_status));
 	struct estimator_status_s estimator_status;
@@ -2364,6 +2387,15 @@ int commander_thread_main(int argc, char *argv[])
 
 		if (updated) {
 			orb_copy(ORB_ID(cpuload), cpuload_sub, &cpuload);
+		}
+
+		/* LU- modify mode */
+		_modify_mode.timestamp = hrt_absolute_time();
+		_modify_mode.oftraject_enable = oftraject_enable;
+		if (lu_modify_mode_pub != nullptr) {
+			orb_publish(ORB_ID(modify_mode), lu_modify_mode_pub, &_modify_mode);
+		} else {
+			lu_modify_mode_pub = orb_advertise(ORB_ID(modify_mode), &_modify_mode);
 		}
 
 		/* update battery status */

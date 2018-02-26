@@ -77,6 +77,9 @@
 #include <uORB/topics/transponder_report.h>
 #include <uORB/topics/gps_inject_data.h>
 #include <uORB/topics/collision_report.h>
+#include <uORB/topics/ca_traject_res.h>
+
+#include <v2.0/common/mavlink_msg_ca_traject_res.h>
 
 #include "mavlink_mission.h"
 #include "mavlink_parameters.h"
@@ -158,6 +161,7 @@ private:
 	void handle_message_named_value_float(mavlink_message_t *msg);
 	void handle_message_debug(mavlink_message_t *msg);
 	void handle_message_debug_vect(mavlink_message_t *msg);
+	void handle_message_ca_traject_res_msg(mavlink_message_t *msg);
 
 	void *receive_thread(void *arg);
 
@@ -231,6 +235,7 @@ private:
 	orb_advert_t _rates_sp_pub;
 	orb_advert_t _pos_sp_triplet_pub;
 	orb_advert_t _att_pos_mocap_pub;
+	orb_advert_t _ca_traj_res_msg_pub;
 	orb_advert_t _vision_position_pub;
 	orb_advert_t _vision_attitude_pub;
 	orb_advert_t _telemetry_status_pub;
