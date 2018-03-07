@@ -1205,10 +1205,10 @@ void
 MulticopterAttitudeControl::control_attitude_rates(float dt)
 {
 
-    float eps = 0.2f;//0.01f;
-    float k1_pr = 0.1f;//0.15f;//0.2f;
+    float eps = 0.1f;//0.2f;//0.01f;
+    float k1_pr = 0.08f;//0.1f;//0.15f;//0.2f;
     float k2_pr = 0.01f;//0.05f;
-    float k1_yaw = 0.015f;//0.02f;
+    float k1_yaw = 0.012f;//0.015f;//0.02f;
     float k2_yaw = 0.0008f;//0.001f;
 
 	/* reset integral if disarmed */
@@ -1296,7 +1296,7 @@ MulticopterAttitudeControl::control_attitude_rates(float dt)
         orb_publish(ORB_ID(controller_rate_scope), _controller_rate_scope_pub, &_controller_rate_scope);
     } else {
         _controller_rate_scope_pub = orb_advertise(ORB_ID(controller_rate_scope), &_controller_rate_scope);
-    }
+    } 
 
 	math::Vector<3> rates_d_scaled = _params.rate_d.emult(pid_attenuations(_params.tpa_breakpoint_d, _params.tpa_rate_d));
     _att_control = _att_control + rates_d_scaled.emult(_rates_prev - rates) / dt;
@@ -1645,7 +1645,7 @@ MulticopterAttitudeControl::start()
 	_control_task = px4_task_spawn_cmd("mc_att_control",
 					   SCHED_DEFAULT,
 					   SCHED_PRIORITY_ATTITUDE_CONTROL,
-					   1700,
+					   2700,
 					   (px4_main_t)&MulticopterAttitudeControl::task_main_trampoline,
 					   nullptr);
 

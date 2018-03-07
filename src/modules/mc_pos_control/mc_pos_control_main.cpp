@@ -68,6 +68,9 @@
 #include <uORB/topics/vehicle_local_position_setpoint.h>
 #include <uORB/topics/vehicle_status.h>
 
+#include <uORB/topics/modify_mode.h>
+#include <uORB/topics/ca_traject_res.h>
+
 #include <float.h>
 #include <lib/geo/geo.h>
 #include <mathlib/mathlib.h>
@@ -146,6 +149,10 @@ private:
 	int		_pos_sp_triplet_sub;		/**< position setpoint triplet */
 	int		_home_pos_sub; 			/**< home position */
 
+	int		_modify_mode_sub;		/**< modify mode -LU */
+	int		_ca_traject_res_sub;	/**< modify mode -LU */
+
+
 	orb_advert_t	_att_sp_pub;			/**< attitude setpoint publication */
 	orb_advert_t	_local_pos_sp_pub;		/**< vehicle local position setpoint publication */
 
@@ -161,6 +168,9 @@ private:
 	struct position_setpoint_triplet_s		_pos_sp_triplet;	/**< vehicle global position setpoint triplet */
 	struct vehicle_local_position_setpoint_s	_local_pos_sp;		/**< vehicle local position setpoint */
 	struct home_position_s				_home_pos; 				/**< home position */
+
+	struct modify_mode_s				_modify_mode;
+	struct ca_traject_res_s				_ca_traject_res;
 
 	control::BlockParamFloat _manual_thr_min; /**< minimal throttle output when flying in manual mode */
 	control::BlockParamFloat _manual_thr_max; /**< maximal throttle output when flying in manual mode */
@@ -182,6 +192,9 @@ private:
 	control::BlockDerivative _vel_x_deriv;
 	control::BlockDerivative _vel_y_deriv;
 	control::BlockDerivative _vel_z_deriv;
+	control::BlockDerivative _vel_ref_x_deriv;
+	control::BlockDerivative _vel_ref_y_deriv;
+	control::BlockDerivative _vel_ref_z_deriv;
 
 	systemlib::Hysteresis _manual_direction_change_hysteresis;
 
@@ -282,6 +295,9 @@ private:
 	math::Vector<3> _vel_err_d;		/**< derivative of current velocity */
 	math::Vector<3> _curr_pos_sp;  /**< current setpoint of the triplets */
 	math::Vector<3> _prev_pos_sp; /**< previous setpoint of the triples */
+	math::Vector<3> _pos_ref_dot;
+	math::Vector<3> _pos_ref_dot_dot;
+	math::Vector<3> _vel_ref_dot;
 	matrix::Vector2f _stick_input_xy_prev; /**< for manual controlled mode to detect direction change */
 
 	math::Matrix<3, 3> _R;			/**< rotation matrix from attitude quaternions */
@@ -421,6 +437,9 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_pos_sp_triplet_sub(-1),
 	_home_pos_sub(-1),
 
+	_modify_mode_sub(-1),
+	_ca_traject_res_sub(-1),
+
 	/* publications */
 	_att_sp_pub(nullptr),
 	_local_pos_sp_pub(nullptr),
@@ -435,6 +454,8 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_pos_sp_triplet{},
 	_local_pos_sp{},
 	_home_pos{},
+	_modify_mode{},
+	_ca_traject_res{},
 	_manual_thr_min(this, "MANTHR_MIN"),
 	_manual_thr_max(this, "MANTHR_MAX"),
 	_xy_vel_man_expo(this, "XY_MAN_EXPO"),
@@ -455,6 +476,9 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_vel_x_deriv(this, "VELD"),
 	_vel_y_deriv(this, "VELD"),
 	_vel_z_deriv(this, "VELD"),
+	_vel_ref_x_deriv(this, "VEFD"),
+	_vel_ref_y_deriv(this, "VEFD"),
+	_vel_ref_z_deriv(this, "VEFD"),
 	_manual_direction_change_hysteresis(false),
 	_filter_manual_pitch(50.0f, 10.0f),
 	_filter_manual_roll(50.0f, 10.0f),
@@ -500,6 +524,9 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_vel_err_d.zero();
 	_curr_pos_sp.zero();
 	_prev_pos_sp.zero();
+	_pos_ref_dot.zero();
+	_pos_ref_dot_dot.zero();
+	_vel_ref_dot.zero();
 	_stick_input_xy_prev.zero();
 
 	_R.identity();
@@ -825,6 +852,18 @@ MulticopterPositionControl::poll_subscriptions()
 
 	if (updated) {
 		orb_copy(ORB_ID(home_position), _home_pos_sub, &_home_pos);
+	}
+
+	orb_check(_modify_mode_sub, &updated);
+
+	if (updated) {
+		orb_copy(ORB_ID(modify_mode), _modify_mode_sub, &_modify_mode);
+	}
+
+	orb_check(_ca_traject_res_sub, &updated);
+
+	if (updated) {
+		orb_copy(ORB_ID(ca_traject_res), _ca_traject_res_sub, &_ca_traject_res);
 	}
 }
 
@@ -1552,7 +1591,15 @@ MulticopterPositionControl::control_non_manual(float dt)
 void
 MulticopterPositionControl::control_offboard(float dt)
 {
-	if (_pos_sp_triplet.current.valid) {
+	_local_pos_sp.in_traject_mode = false;
+	//float dt = t_prev != 0 ? (t - t_prev) / 1e6f : 0.004f;
+	hrt_abstime _now = hrt_absolute_time();
+	float time_out_mm = _modify_mode.timestamp != 0 ? (_now - _modify_mode.timestamp) / 1e6f : 10.0f;
+	bool _modify_mode_valid = (time_out_mm < 0.5f) ? true : false;
+	_modify_mode_valid = _modify_mode_valid & _modify_mode.oftraject_enable;
+	_pos_ref_dot.zero();
+	_pos_ref_dot_dot.zero();
+	if (_pos_sp_triplet.current.valid && !_modify_mode_valid) {
 
 		if (_control_mode.flag_control_position_enabled && _pos_sp_triplet.current.position_valid) {
 			/* control position */
@@ -1651,12 +1698,38 @@ MulticopterPositionControl::control_offboard(float dt)
 				_att_sp.yaw_body = yaw_target;
 			}
 		}
-
+		_pos_ref_dot.zero();
+		_pos_ref_dot_dot.zero();
+	} else if (_pos_sp_triplet.current.valid && _modify_mode_valid) {
+		_local_pos_sp.in_traject_mode = true;
+		if (_now <= _ca_traject_res.timestamp + 500000) {
+			_pos_sp(0) = _ca_traject_res.P_d[0];
+			_pos_sp(1) = _ca_traject_res.P_d[1];
+			_pos_sp(2) = _ca_traject_res.P_d[2];
+			_pos_ref_dot(0) = _ca_traject_res.vel_d[0];
+			_pos_ref_dot(1) = _ca_traject_res.vel_d[1];
+			_pos_ref_dot(2) = _ca_traject_res.vel_d[2];
+			_pos_ref_dot_dot(0) = _ca_traject_res.acc_d[0];
+			_pos_ref_dot_dot(1) = _ca_traject_res.acc_d[1];
+			_pos_ref_dot_dot(2) = _ca_traject_res.acc_d[2];
+			_run_alt_control = true;
+			_att_sp.yaw_body = _ca_traject_res.P_d[3];
+		} else {
+			_pos_sp(0) = _pos_sp_triplet.current.x;
+			_pos_sp(1) = _pos_sp_triplet.current.y;
+			_pos_sp(2) = _pos_sp_triplet.current.z;
+			_pos_ref_dot.zero();
+			_pos_ref_dot_dot.zero();
+			_run_alt_control = true;
+			_att_sp.yaw_body = _pos_sp_triplet.current.yaw;
+		}
 	} else {
 		_hold_offboard_xy = false;
 		_hold_offboard_z = false;
 		reset_pos_sp();
 		reset_alt_sp();
+		_pos_ref_dot.zero();
+		_pos_ref_dot_dot.zero();
 	}
 }
 
@@ -2370,6 +2443,12 @@ MulticopterPositionControl::update_velocity_derivative()
 	_vel_err_d(1) = _vel_y_deriv.update(-_vel(1));
 
 	_vel_err_d(2) = _vel_z_deriv.update(-_vel(2));
+
+	_vel_ref_dot(0) = _vel_ref_x_deriv.update(_vel_sp(0));
+
+	_vel_ref_dot(1) = _vel_ref_x_deriv.update(_vel_sp(1));
+
+	_vel_ref_dot(2) = _vel_ref_x_deriv.update(_vel_sp(2));
 }
 
 void
@@ -2421,6 +2500,7 @@ MulticopterPositionControl::control_position(float dt)
 void
 MulticopterPositionControl::calculate_velocity_setpoint(float dt)
 {
+	hrt_abstime _now = hrt_absolute_time();
 	/* run position & altitude controllers, if enabled (otherwise use already computed velocity setpoints) */
 	if (_run_pos_control) {
 
@@ -2428,6 +2508,12 @@ MulticopterPositionControl::calculate_velocity_setpoint(float dt)
 		if (PX4_ISFINITE(_pos_sp(0)) && PX4_ISFINITE(_pos_sp(1))) {
 			_vel_sp(0) = (_pos_sp(0) - _pos(0)) * _params.pos_p(0);
 			_vel_sp(1) = (_pos_sp(1) - _pos(1)) * _params.pos_p(1);
+			if (_now < _modify_mode.timestamp + 500000 && _now < _ca_traject_res.timestamp + 500000) {
+				if (_modify_mode.oftraject_enable) {
+					_vel_sp(0) += _pos_ref_dot(0);
+					_vel_sp(1) += _pos_ref_dot(1);
+				}
+			}
 
 		} else {
 			_vel_sp(0) = 0.0f;
@@ -2445,6 +2531,11 @@ MulticopterPositionControl::calculate_velocity_setpoint(float dt)
 	if (_run_alt_control) {
 		if (PX4_ISFINITE(_pos_sp(2))) {
 			_vel_sp(2) = (_pos_sp(2) - _pos(2)) * _params.pos_p(2);
+			if (_now < _modify_mode.timestamp + 500000 && _now < _ca_traject_res.timestamp + 500000) {
+				if (_modify_mode.oftraject_enable) {
+					_vel_sp(2) += _pos_ref_dot(2);
+				}
+			}
 
 		} else {
 			_vel_sp(2) = 0.0f;
@@ -2521,6 +2612,7 @@ MulticopterPositionControl::calculate_velocity_setpoint(float dt)
 void
 MulticopterPositionControl::calculate_thrust_setpoint(float dt)
 {
+	hrt_abstime _now = hrt_absolute_time();
 	/* reset integrals if needed */
 	if (_control_mode.flag_control_climb_rate_enabled) {
 		if (_reset_int_z) {
@@ -2562,6 +2654,14 @@ MulticopterPositionControl::calculate_thrust_setpoint(float dt)
 	} else {
 		thrust_sp = vel_err.emult(_params.vel_p) + _vel_err_d.emult(_params.vel_d)
 			    + _thrust_int - math::Vector<3>(0.0f, 0.0f, _params.thr_hover);
+	}
+
+	if (_now < _modify_mode.timestamp + 500000 && _now < _ca_traject_res.timestamp + 500000) {
+		if (_modify_mode.oftraject_enable) {
+			thrust_sp(0) += _pos_ref_dot_dot(0) * 0.04f;
+			thrust_sp(1) += _pos_ref_dot_dot(1) * 0.04f;
+			thrust_sp(2) += _pos_ref_dot_dot(2) * 0.04f;
+		}
 	}
 
 	if (!_control_mode.flag_control_velocity_enabled && !_control_mode.flag_control_acceleration_enabled) {
@@ -3002,6 +3102,9 @@ MulticopterPositionControl::task_main()
 	_pos_sp_triplet_sub = orb_subscribe(ORB_ID(position_setpoint_triplet));
 	_home_pos_sub = orb_subscribe(ORB_ID(home_position));
 
+	_modify_mode_sub = orb_subscribe(ORB_ID(modify_mode));
+	_ca_traject_res_sub = orb_subscribe(ORB_ID(ca_traject_res));
+
 	parameters_update(true);
 
 	/* get an initial update for all sensor and status data */
@@ -3142,7 +3245,15 @@ MulticopterPositionControl::task_main()
 			_local_pos_sp.vx = _vel_sp(0);
 			_local_pos_sp.vy = _vel_sp(1);
 			_local_pos_sp.vz = _vel_sp(2);
-
+			_local_pos_sp.vx_dot = _vel_ref_dot(0);
+			_local_pos_sp.vy_dot = _vel_ref_dot(1);
+			_local_pos_sp.vz_dot = _vel_ref_dot(2);
+			_local_pos_sp.pos_x_err = _pos_sp(0) - _pos(0);
+			_local_pos_sp.pos_y_err = _pos_sp(1) - _pos(1);
+			_local_pos_sp.pos_z_err = _pos_sp(2) - _pos(2);
+			_local_pos_sp.vel_x_err = _vel_sp(0) - _vel(0);
+			_local_pos_sp.vel_y_err = _vel_sp(1) - _vel(1);
+			_local_pos_sp.vel_z_err = _vel_sp(2) - _vel(2);
 			/* publish local position setpoint */
 			if (_local_pos_sp_pub != nullptr) {
 				orb_publish(ORB_ID(vehicle_local_position_setpoint), _local_pos_sp_pub, &_local_pos_sp);

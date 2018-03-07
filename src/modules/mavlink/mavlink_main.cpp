@@ -1893,6 +1893,9 @@ Mavlink::task_main(int argc, char *argv[])
 			} else if (strcmp(myoptarg, "iridium") == 0) {
 				_mode = MAVLINK_MODE_IRIDIUM;
 				_rstatus.type = telemetry_status_s::TELEMETRY_STATUS_RADIO_TYPE_IRIDIUM;
+			} else if (strcmp(myoptarg, "luonb") == 0) {
+				_mode = MAVLINK_MODE_LUONB;
+
 			}
 
 			break;
@@ -2146,6 +2149,11 @@ Mavlink::task_main(int argc, char *argv[])
 	case MAVLINK_MODE_IRIDIUM:
 		configure_stream("HIGH_LATENCY", 0.1f);
 		break;
+
+	case MAVLINK_MODE_LUONB:
+		configure_stream("ATTITUDE",20.0f);
+		configure_stream("LOCAL_POSITION_NED",40.0f);
+		configure_stream("SYS_STATUS",1.0f);
 
 	default:
 		break;

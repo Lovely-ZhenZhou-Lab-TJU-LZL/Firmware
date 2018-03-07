@@ -79,7 +79,7 @@
 #include <uORB/topics/collision_report.h>
 #include <uORB/topics/ca_traject_res.h>
 
-#include <v2.0/common/mavlink_msg_ca_traject_res.h>
+//#include <v2.0/common/mavlink_msg_ca_traject_res.h>
 
 #include "mavlink_mission.h"
 #include "mavlink_parameters.h"

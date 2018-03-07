@@ -171,7 +171,8 @@ public:
 		MAVLINK_MODE_OSD,
 		MAVLINK_MODE_MAGIC,
 		MAVLINK_MODE_CONFIG,
-		MAVLINK_MODE_IRIDIUM
+		MAVLINK_MODE_IRIDIUM,
+		MAVLINK_MODE_LUONB // added by lu for modify mavlink stream
 	};
 
 	enum BROADCAST_MODE {
@@ -202,6 +203,9 @@ public:
 
 		case MAVLINK_MODE_IRIDIUM:
 			return "Iridium";
+
+		case MAVLINK_MODE_LUONB:
+			return "Luonb";
 
 		default:
 			return "Unknown";

@@ -3,7 +3,8 @@
 # Standard apps for multirotors:
 # att & pos estimator, att & pos control.
 #
-
+param set SYS_MC_EST_GROUP 0
+param save
 
 #---------------------------------------
 # Estimator group selction
@@ -11,9 +12,11 @@
 # INAV (deprecated)
 if param compare SYS_MC_EST_GROUP 0
 then
-	echo "ERROR [init] Estimator INAV deprecated. Using EKF2"
-	param set SYS_MC_EST_GROUP 2
-	param save
+	#echo "ERROR [init] Estimator INAV deprecated. Using EKF2"
+	#param set SYS_MC_EST_GROUP 2
+	#param save
+	attitude_estimator_q start
+	position_estimator_inav start
 fi
 
 # LPE

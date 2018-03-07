@@ -166,6 +166,8 @@ then
 		fi
 	fi
 
+param set MAV_COMP_ID 1
+
 	#
 	# Set default values
 	#
@@ -552,7 +554,8 @@ then
 	if [ $MAVLINK_F == default ]
 	then
 		# Normal mode, use baudrate 57600 (default) and data rate 1000 bytes/s
-		set MAVLINK_F "-r 1200 -f"
+		#set MAVLINK_F "-r 1200 -f"
+		set MAVLINK_F "-b 115200 -r 800000 -f"
 
 		# Avoid using ttyS1 for MAVLink on FMUv4
 		if ver hwcmp PX4FMU_V4
@@ -620,7 +623,8 @@ then
 	fi
 	if param compare SYS_COMPANION 157600
 	then
-		mavlink start -d ${MAVLINK_COMPANION_DEVICE} -b 57600 -m osd -r 1000
+		#mavlink start -d ${MAVLINK_COMPANION_DEVICE} -b 57600 -m osd -r 1000
+		mavlink start -d ${MAVLINK_COMPANION_DEVICE} -b 115200 -m luonb -r 800000 -x
 	fi
 	if param compare SYS_COMPANION 257600
 	then
@@ -711,6 +715,7 @@ then
 	else
 		# Start MAVLink
 		mavlink start -r 800000 -d /dev/ttyACM0 -m config -x
+		#nshterm /dev/ttyACM0 &
 	fi
 
 	#

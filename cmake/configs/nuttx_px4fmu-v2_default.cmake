@@ -112,10 +112,10 @@ set(config_module_list
 	#
 	# Estimation modules
 	#
-	#modules/attitude_estimator_q
+	modules/attitude_estimator_q
 	modules/ekf2
 	#modules/local_position_estimator
-	#modules/position_estimator_inav
+	modules/position_estimator_inav
 
 	#
 	# Vehicle Control
@@ -158,7 +158,7 @@ set(config_module_list
 	lib/mixer
 	lib/runway_takeoff
 	lib/tailsitter_recovery
-	#lib/terrain_estimation
+	lib/terrain_estimation
 	lib/version
 
 	#

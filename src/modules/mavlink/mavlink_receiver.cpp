@@ -197,6 +197,7 @@ MavlinkReceiver::handle_message(mavlink_message_t *msg)
 			_mavlink->set_config_link_on(true);
 		}
 	}
+	//printf("msgid:%d\n",msg->msgid);
 
 	switch (msg->msgid) {
 	case MAVLINK_MSG_ID_COMMAND_LONG:
@@ -237,7 +238,9 @@ MavlinkReceiver::handle_message(mavlink_message_t *msg)
 		break;
 
 	case MAVLINK_MSG_ID_CA_TRAJECT_RES:
+		//printf("callback!\n");
 		handle_message_ca_traject_res_msg(msg);
+		break;
 
 	case MAVLINK_MSG_ID_SET_POSITION_TARGET_LOCAL_NED:
 		handle_message_set_position_target_local_ned(msg);
@@ -2450,6 +2453,7 @@ MavlinkReceiver::receive_thread(void *arg)
 
 #endif
 			// only start accepting messages once we're sure who we talk to
+			//printf("test for call %d \n",nread);
 
 			if (_mavlink->get_client_source_initialized()) {
 				/* if read failed, this loop won't execute */
@@ -2463,6 +2467,7 @@ MavlinkReceiver::receive_thread(void *arg)
 						}
 
 						/* handle generic messages and commands */
+						//printf("start handle\n");
 						handle_message(&msg);
 
 						/* handle packet with mission manager */
@@ -2481,6 +2486,8 @@ MavlinkReceiver::receive_thread(void *arg)
 
 						/* handle packet with parent object */
 						_mavlink->handle_message(&msg);
+					//} else {
+						//printf("status: %d",_status.msg_received);
 					}
 				}
 

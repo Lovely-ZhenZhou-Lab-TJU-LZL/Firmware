@@ -401,6 +401,17 @@ PARAM_DEFINE_FLOAT(MPC_HOLD_MAX_Z, 0.6f);
 PARAM_DEFINE_FLOAT(MPC_VELD_LP, 5.0f);
 
 /**
+ * Low pass filter cut freq. for numerical velocity derivative
+ *
+ * @unit Hz
+ * @min 0.0
+ * @max 20
+ * @decimal 2
+ * @group Multicopter Position Control
+ */
+PARAM_DEFINE_FLOAT(MPC_VEFD_LP, 15.0f);
+
+/**
  * Maximum horizontal acceleration for auto mode and maximum deceleration for manual mode
  *
  * @unit m/s/s
