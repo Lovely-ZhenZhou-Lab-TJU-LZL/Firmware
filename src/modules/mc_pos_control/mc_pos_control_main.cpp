@@ -1701,8 +1701,8 @@ MulticopterPositionControl::control_offboard(float dt)
 		_pos_ref_dot.zero();
 		_pos_ref_dot_dot.zero();
 	} else if (_pos_sp_triplet.current.valid && _modify_mode_valid) {
-		_local_pos_sp.in_traject_mode = true;
 		if (_now <= _ca_traject_res.timestamp + 500000) {
+			_local_pos_sp.in_traject_mode = true;
 			_pos_sp(0) = _ca_traject_res.P_d[0];
 			_pos_sp(1) = _ca_traject_res.P_d[1];
 			_pos_sp(2) = _ca_traject_res.P_d[2];
