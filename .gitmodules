@@ -4,7 +4,7 @@
 	branch = master
 [submodule "mavlink/include/mavlink/v2.0"]
 	path = mavlink/include/mavlink/v2.0
-	url = https://github.com/mavlink/c_library_v2.git
+	url = https://github.com/lhc610github/mavlink_v2_test.git
 	branch = master
 [submodule "src/modules/uavcan/libuavcan"]
 	path = src/modules/uavcan/libuavcan
