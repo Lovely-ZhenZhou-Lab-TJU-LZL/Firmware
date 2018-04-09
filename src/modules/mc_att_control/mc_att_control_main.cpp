@@ -82,8 +82,6 @@
 #include <uORB/topics/vehicle_control_mode.h>
 #include <uORB/topics/vehicle_rates_setpoint.h>
 #include <uORB/topics/vehicle_status.h>
-#include <uORB/topics/controller_scope.h>
-#include <uORB/topics/controller_rate_scope.h>
 #include <uORB/uORB.h>
 
 /**
@@ -148,8 +146,6 @@ private:
 	orb_advert_t	_v_rates_sp_pub;		/**< rate setpoint publication */
 	orb_advert_t	_actuators_0_pub;		/**< attitude actuator controls publication */
 	orb_advert_t	_controller_status_pub;	/**< controller status publication */
-    orb_advert_t    _controller_scope_pub;
-    orb_advert_t    _controller_rate_scope_pub;
 
 	orb_id_t _rates_sp_id;	/**< pointer to correct rates setpoint uORB metadata structure */
 	orb_id_t _actuators_id;	/**< pointer to correct actuator controls0 uORB metadata structure */
@@ -168,8 +164,6 @@ private:
 	struct sensor_gyro_s			_sensor_gyro;		/**< gyro data before thermal correctons and ekf bias estimates are applied */
 	struct sensor_correction_s		_sensor_correction;	/**< sensor thermal corrections */
 	struct sensor_bias_s			_sensor_bias;		/**< sensor in-run bias corrections */
-    struct controller_scope_s       _controller_scope;
-    struct controller_rate_scope_s  _controller_rate_scope;
 
 	MultirotorMixer::saturation_status _saturation_status{};
 
@@ -186,14 +180,6 @@ private:
 	math::Matrix<3, 3>  _I;				/**< identity matrix */
 
 	math::Matrix<3, 3>	_board_rotation = {};	/**< rotation matrix for the orientation that the board is mounted */
-
-    math::Matrix<4, 4>  Tau_to_ww;
-    math::Matrix<3, 3>  _J;
-    math::Matrix<3, 3>  R;
-    math::Matrix<3, 3>  R_sp;
-    float scale_CT;   /**< 10000 * CT */
-    math::Vector<2>    inf_s_pr;
-    float              inf_s_yaw;
 
 	struct {
 		param_t roll_p;
@@ -325,18 +311,6 @@ private:
 	math::Vector<3> pid_attenuations(float tpa_breakpoint, float tpa_rate);
 
 	/**
-	 * Get rate of vehicle.
-	 */
-	math::Vector<3> get_rate();
-
-	/**
-	 * Get u from tau.
-	 */
-    math::Vector<3> get_u_from_Tau(math::Vector<4> Tau);
-
-    float fal(float e, float norm_e,float alpha, float delta);
-
-	/**
 	 * Shim for calling task_main from task_create.
 	 */
 	static void	task_main_trampoline(int argc, char *argv[]);
@@ -378,8 +352,6 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_v_rates_sp_pub(nullptr),
 	_actuators_0_pub(nullptr),
 	_controller_status_pub(nullptr),
-    _controller_scope_pub(nullptr),
-    _controller_rate_scope_pub(nullptr),
 	_rates_sp_id(nullptr),
 	_actuators_id(nullptr),
 
@@ -397,8 +369,6 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_sensor_gyro{},
 	_sensor_correction{},
 	_sensor_bias{},
-    _controller_scope{},
-    _controller_rate_scope{},
 	_saturation_status{},
 	/* performance counters */
 	_loop_perf(perf_alloc(PC_ELAPSED, "mc_att_control")),
@@ -442,40 +412,6 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 
 	_I.identity();
 	_board_rotation.identity();
-
-    /* init Tau_to_ww */
-    Tau_to_ww.zero();
-    float k1 = 25427.18f;
-    float k2 = 226019.35f;
-    float k3 = 2032520.33f;
-
-    Tau_to_ww(0, 0) = k1;
-    Tau_to_ww(1, 0) = k1;
-    Tau_to_ww(2, 0) = k1;
-    Tau_to_ww(3, 0) = k1;
-
-    Tau_to_ww(0, 1) = - k2;
-    Tau_to_ww(1, 1) = k2;
-
-    Tau_to_ww(2, 2) = k2;
-    Tau_to_ww(3, 2) = - k2;
-
-    Tau_to_ww(0, 3) = k3;
-    Tau_to_ww(1, 3) = k3;
-    Tau_to_ww(2, 3) = - k3;
-    Tau_to_ww(3, 3) = - k3;
-
-    _J.zero();
-    _J(0, 0) = 0.01431f;
-    _J(1, 1) = 0.01431f;
-    _J(2, 2) = 0.02721f;
-
-    R.identity();
-    R_sp.identity();
-
-    scale_CT = 0.09832f;
-    inf_s_yaw = 0.0f;
-    inf_s_pr.zero();
 
 	_params_handles.roll_p			= 	param_find("MC_ROLL_P");
 	_params_handles.roll_rate_p		= 	param_find("MC_ROLLRATE_P");
@@ -880,172 +816,84 @@ MulticopterAttitudeControl::control_attitude(float dt)
 
 	/* construct attitude setpoint rotation matrix */
 	math::Quaternion q_sp(_v_att_sp.q_d[0], _v_att_sp.q_d[1], _v_att_sp.q_d[2], _v_att_sp.q_d[3]);
-	R_sp = q_sp.to_dcm();
+	math::Matrix<3, 3> R_sp = q_sp.to_dcm();
 
 	/* get current rotation matrix from control state quaternions */
 	math::Quaternion q_att(_v_att.q[0], _v_att.q[1], _v_att.q[2], _v_att.q[3]);
-	R = q_att.to_dcm();
-
-   /* get error of the attitude -by lu*/
-    float eps = 0.001f;
-    math::Matrix<3, 3> R_dTR = R_sp.transposed() * R;
-    float tr_R_dTR = R_dTR(0, 0) + R_dTR(1, 1) + R_dTR(2, 2);
-    if (tr_R_dTR < -1.0f) {
-        tr_R_dTR = -1.0f;
-    }
-
-    math::Matrix<3, 3> e_hat = R_sp.transposed() * R - R.transposed() * R_sp;
-    math::Vector<3> e_attitude(e_hat(2, 1), e_hat(0, 2), e_hat(1, 0));
-    float temp_scale = 1.0f / (2.0f * (float)sqrt(1.0f + tr_R_dTR + eps));
-    e_attitude = e_attitude * temp_scale;
-    _controller_scope.e_att[0] = e_attitude(0);
-    _controller_scope.e_att[1] = e_attitude(1);
-    _controller_scope.e_att[2] = e_attitude(2);
-    _controller_scope.temp_scale = temp_scale;
+	math::Matrix<3, 3> R = q_att.to_dcm();
 
 	/* all input data is ready, run controller itself */
 
 	/* try to move thrust vector shortest way, because yaw response is slower than roll/pitch */
-	//math::Vector<3> R_z(R(0, 2), R(1, 2), R(2, 2));
-	//math::Vector<3> R_sp_z(R_sp(0, 2), R_sp(1, 2), R_sp(2, 2));
+	math::Vector<3> R_z(R(0, 2), R(1, 2), R(2, 2));
+	math::Vector<3> R_sp_z(R_sp(0, 2), R_sp(1, 2), R_sp(2, 2));
 
-	/* axis and sin(angle) of desired rotation */
-	//math::Vector<3> e_R = R.transposed() * (R_z % R_sp_z);
-   
+	/* axis and sin(angle) of desired rotation (indexes: 0=pitch, 1=roll, 2=yaw).
+	 * This is for roll/pitch only (tilt), e_R(2) is 0 */
+	math::Vector<3> e_R = R.transposed() * (R_z % R_sp_z);
+
 	/* calculate angle error */
-	//float e_R_z_sin = e_R.length();
-	//float e_R_z_cos = R_z * R_sp_z;
-
-	/* calculate weight for yaw control */
-	//float yaw_w = R_sp(2, 2) * R_sp(2, 2);
+	float e_R_z_sin = e_R.length(); // == sin(tilt angle error)
+	float e_R_z_cos = R_z * R_sp_z; // == cos(tilt angle error) == (R.transposed() * R_sp)(2, 2)
 
 	/* calculate rotation matrix after roll/pitch only rotation */
-	//math::Matrix<3, 3> R_rp;
+	math::Matrix<3, 3> R_rp;
 
-	//if (e_R_z_sin > 0.0f) {
+	if (e_R_z_sin > 0.0f) {
 		/* get axis-angle representation */
-		//float e_R_z_angle = atan2f(e_R_z_sin, e_R_z_cos);
-		//math::Vector<3> e_R_z_axis = e_R / e_R_z_sin;
+		float e_R_z_angle = atan2f(e_R_z_sin, e_R_z_cos);
+		math::Vector<3> e_R_z_axis = e_R / e_R_z_sin;
 
-		//e_R = e_R_z_axis * e_R_z_angle;
+		e_R = e_R_z_axis * e_R_z_angle;
 
 		/* cross product matrix for e_R_axis */
-		//math::Matrix<3, 3> e_R_cp;
-		//e_R_cp.zero();
-		//e_R_cp(0, 1) = -e_R_z_axis(2);
-		//e_R_cp(0, 2) = e_R_z_axis(1);
-		//e_R_cp(1, 0) = e_R_z_axis(2);
-		//e_R_cp(1, 2) = -e_R_z_axis(0);
-		//e_R_cp(2, 0) = -e_R_z_axis(1);
-		//e_R_cp(2, 1) = e_R_z_axis(0);
+		math::Matrix<3, 3> e_R_cp;
+		e_R_cp.zero();
+		e_R_cp(0, 1) = -e_R_z_axis(2);
+		e_R_cp(0, 2) = e_R_z_axis(1);
+		e_R_cp(1, 0) = e_R_z_axis(2);
+		e_R_cp(1, 2) = -e_R_z_axis(0);
+		e_R_cp(2, 0) = -e_R_z_axis(1);
+		e_R_cp(2, 1) = e_R_z_axis(0);
 
 		/* rotation matrix for roll/pitch only rotation */
-		//R_rp = R * (_I + e_R_cp * e_R_z_sin + e_R_cp * e_R_cp * (1.0f - e_R_z_cos));
+		R_rp = R * (_I + e_R_cp * e_R_z_sin + e_R_cp * e_R_cp * (1.0f - e_R_z_cos));
 
-	//} else {
+	} else {
 		/* zero roll/pitch rotation */
-		//R_rp = R;
-	//}
+		R_rp = R;
+	}
 
-	/* R_rp and R_sp has the same Z axis, calculate yaw error */
-	//math::Vector<3> R_sp_x(R_sp(0, 0), R_sp(1, 0), R_sp(2, 0));
-	//math::Vector<3> R_rp_x(R_rp(0, 0), R_rp(1, 0), R_rp(2, 0));
-	//e_R(2) = atan2f((R_rp_x % R_sp_x) * R_sp_z, R_rp_x * R_sp_x) * yaw_w;
+	/* R_rp and R_sp have the same Z axis, calculate yaw error */
+	math::Vector<3> R_sp_x(R_sp(0, 0), R_sp(1, 0), R_sp(2, 0));
+	math::Vector<3> R_rp_x(R_rp(0, 0), R_rp(1, 0), R_rp(2, 0));
 
-	//if (e_R_z_cos < 0.0f) {
+	/* calculate the weight for yaw control
+	 * Make the weight depend on the tilt angle error: the higher the error of roll and/or pitch, the lower
+	 * the weight that we use to control the yaw. This gives precedence to roll & pitch correction.
+	 * The weight is 1 if there is no tilt error.
+	 */
+	float yaw_w = e_R_z_cos * e_R_z_cos;
+
+	/* calculate the angle between R_rp_x and R_sp_x (yaw angle error), and apply the yaw weight */
+	e_R(2) = atan2f((R_rp_x % R_sp_x) * R_sp_z, R_rp_x * R_sp_x) * yaw_w;
+
+	if (e_R_z_cos < 0.0f) {
 		/* for large thrust vector rotations use another rotation method:
 		 * calculate angle and axis for R -> R_sp rotation directly */
-		//math::Quaternion q_error;
-		//q_error.from_dcm(R.transposed() * R_sp);
-		//math::Vector<3> e_R_d = q_error(0) >= 0.0f ? q_error.imag()  * 2.0f : -q_error.imag() * 2.0f;
+		math::Quaternion q_error;
+		q_error.from_dcm(R.transposed() * R_sp);
+		math::Vector<3> e_R_d = q_error(0) >= 0.0f ? q_error.imag()  * 2.0f : -q_error.imag() * 2.0f;
 
 		/* use fusion of Z axis based rotation and direct rotation */
-		//float direct_w = e_R_z_cos * e_R_z_cos * yaw_w;
-		//e_R = e_R * (1.0f - direct_w) + e_R_d * direct_w;
-	//}
+		float direct_w = e_R_z_cos * e_R_z_cos * yaw_w;
+		e_R = e_R * (1.0f - direct_w) + e_R_d * direct_w;
+	}
 
-    /* calculate augular rates setpoint -by lu */
-    math::Matrix<3, 3> RTR_d = R.transposed() * R_sp;
-    float trace_RTR_d = RTR_d(0, 0) + RTR_d(1, 1) + RTR_d(2, 2);
-    if (trace_RTR_d < -1.0f) {
-        trace_RTR_d = -1.0f;
-    }
+	/* calculate angular rates setpoint */
+	_rates_sp = _params.att_p.emult(e_R);
 
-    //math::Matrix<3, 3> _I.identity();
 
-    math::Matrix<3, 1> e_att;
-    e_att(0, 0) = e_attitude(0);
-    e_att(1, 0) = e_attitude(1);
-    e_att(2, 0) = e_attitude(2);
-
-    math::Matrix<3, 3> e_Re_RT = e_att * e_att.transposed();
-    /*for (int _i_m = 0; _i_m < 3; _i_m++) {
-        for (int _j_m = 0; _j_m < 3; _j_m++) {
-            e_Re_RT(_i_m, _j_m) = e_attitude(_i_m)*e_attitude(_j_m);
-        }
-    }*/
-    
-    math::Matrix<3, 3> _E;
-    _E = (_I * trace_RTR_d - R_dTR + e_Re_RT * 2.0f) * temp_scale;
-
-	math::Vector<3> rates = get_rate();
-
-    /* get the adj of _E -by lu*/
-    math::Matrix<3, 3> _E_adj;
-    _E_adj(0, 0) =   _E(1, 1) * _E(2, 2) - _E(1, 2) * _E(2, 1);
-    _E_adj(0, 1) = - _E(1, 0) * _E(2, 2) + _E(1, 2) * _E(2, 0);
-    _E_adj(0, 2) =   _E(1, 0) * _E(2, 1) - _E(1, 1) * _E(2, 0);
-
-    _E_adj(1, 0) = - _E(0, 1) * _E(2, 2) + _E(0, 2) * _E(2, 1);
-    _E_adj(1, 1) =   _E(0, 0) * _E(2, 2) - _E(0, 2) * _E(2, 0);
-    _E_adj(1, 2) = - _E(0, 0) * _E(2, 1) + _E(0, 1) * _E(2, 0);
-
-    _E_adj(2, 0) =   _E(0, 1) * _E(1, 2) - _E(0, 2) * _E(1, 1);
-    _E_adj(2, 1) = - _E(0, 0) * _E(1, 2) + _E(0, 2) * _E(1, 0);
-    _E_adj(2, 2) =   _E(0, 0) * _E(1, 1) - _E(1, 0) * _E(0, 1);
-
-    float _E_norm = _E(0, 0) * _E(1, 1) * _E(2, 2) + _E(0, 1) * _E(1, 2) * _E(2, 0) + _E(1, 0) * _E(2, 1) * _E(0, 2);
-    _E_norm = _E_norm - _E(0, 2) * _E(1, 1) * _E(2, 0) - _E(1, 2) * _E(2, 1) * _E(0, 0) - _E(0, 1) * _E(1, 0) * _E(2, 2);
-
-    //_controller_scope.E_norm = _E_norm;
-
-    if ( fabsf(_E_norm) < 0.01f ) {
-        if ( _E_norm <= 0.0f ) {
-            _E_norm = -0.01f;
-        } else {
-            _E_norm = 0.01f;
-        }
-    }
-
-    _controller_scope.E_norm = _E_norm;
-
-    float _E_norm_1 = 1.0f / _E_norm;
-    math::Matrix<3, 3> _E_inv = _E_adj * _E_norm_1;
-
-    float kp1 = 5.5f;
-    float kp2 = 5.5f;
-    float kp3 = 3.0f;
-
-    math::Vector<3> _k_e_att(e_attitude(0)*kp1, e_attitude(1)*kp2, e_attitude(2)*kp3);
-
-    math::Vector<3> _model_part;
-    _model_part = R_dTR * rates;
-    math::Vector<3> _control_part;
-    _control_part = R_dTR * _E_inv * _k_e_att;
-
-    _controller_scope.model_part[0] = _model_part(0);
-    _controller_scope.model_part[1] = _model_part(1);
-    _controller_scope.model_part[2] = _model_part(2);
-
-    _controller_scope.control_part[0] = _control_part(0);
-    _controller_scope.control_part[1] = _control_part(1);
-    _controller_scope.control_part[2] = _control_part(2);
-
-    //_rates_sp = -(R_dTR * rates + R_dTR * _E_inv * _k_e_att);
-    //_rates_sp = - (_model_part + _control_part);
-    _rates_sp = - _control_part;
-
-    float yaw_w = 1.0f; //fake
 	/* Feed forward the yaw setpoint rate. We need to transform the yaw from world into body frame.
 	 * The following is a simplification of:
 	 * R.transposed() * math::Vector<3>(0.f, 0.f, _v_att_sp.yaw_sp_move_rate * _params.yaw_ff)
@@ -1055,14 +903,7 @@ MulticopterAttitudeControl::control_attitude(float dt)
 
 	yaw_feedforward_rate(2) *= yaw_w;
 	_rates_sp += yaw_feedforward_rate;
-    _controller_scope.timestamp = hrt_absolute_time();
-    if (_controller_scope_pub != nullptr) {
-        orb_publish(ORB_ID(controller_scope), _controller_scope_pub, &_controller_scope);
-    } else {
-        _controller_scope_pub = orb_advertise(ORB_ID(controller_scope), &_controller_scope);
-    }
-	/* calculate angular rates setpoint */
-	//_rates_sp = _params.att_p.emult(e_R);
+
 
 	/* limit rates */
 	for (int i = 0; i < 3; i++) {
@@ -1110,13 +951,18 @@ MulticopterAttitudeControl::pid_attenuations(float tpa_breakpoint, float tpa_rat
 }
 
 /*
- * get Attitude rate 
- * Input: null
- * Output: rate
+ * Attitude rates controller.
+ * Input: '_rates_sp' vector, '_thrust_sp'
+ * Output: '_att_control' vector
  */
-math::Vector<3>
-MulticopterAttitudeControl::get_rate()
+void
+MulticopterAttitudeControl::control_attitude_rates(float dt)
 {
+	/* reset integral if disarmed */
+	if (!_v_control_mode.flag_armed || !_vehicle_status.is_rotary_wing) {
+		_rates_int.zero();
+	}
+
 	// get the raw gyro data and correct for thermal errors
 	math::Vector<3> rates;
 
@@ -1148,164 +994,18 @@ MulticopterAttitudeControl::get_rate()
 	rates(0) -= _sensor_bias.gyro_x_bias;
 	rates(1) -= _sensor_bias.gyro_y_bias;
 	rates(2) -= _sensor_bias.gyro_z_bias;
-	return rates;
-}
 
-/*
- * Get u from Tau
- * Input: 'Tau' vector
- * Output: 'u' vector
- */
-math::Vector<3>
-MulticopterAttitudeControl::get_u_from_Tau(math::Vector<4> Tau)
-{
-
-    math::Vector<4> ww = Tau_to_ww * Tau;
-    math::Vector<4> w;
-    math::Vector<4> alpha;
-
-    for (int i = 0; i < 4; i++) {
-        if (ww(i) < 1.0f) {
-            ww(i) = 1.0f;
-        }
-        w(i) = (float)sqrt(ww(i));
-        alpha(i) = ( w(i) - 125.98f ) / 625.0f;
-    }
-
-    math::Vector<3> u;
-    u(0) = - alpha(0) + alpha(1);
-    u(1) = alpha(2) - alpha(3);
-    u(2) = alpha(0) + alpha(1) - alpha(2) - alpha(3);
-
-    return u;
-}
-
-float
-MulticopterAttitudeControl::fal(float e, float norm_e,float alpha, float delta)
-{
-    float y;
-    float abs_e = fabsf(e);
-    if(abs_e <= delta)
-    {
-        y = e / powf(delta, 1.0f - alpha);
-    }
-    else
-    {
-        y = e / norm_e * powf(abs_e, alpha);
-    }
-    return y;
-}
-
-/*
- * Attitude rates controller.
- * Input: '_rates_sp' vector, '_thrust_sp'
- * Output: '_att_control' vector
- */
-void
-MulticopterAttitudeControl::control_attitude_rates(float dt)
-{
-
-    float eps = 0.1f;//0.2f;//0.01f;
-    float k1_pr = 0.08f;//0.1f;//0.15f;//0.2f;
-    float k2_pr = 0.01f;//0.05f;
-    float k1_yaw = 0.012f;//0.015f;//0.02f;
-    float k2_yaw = 0.0008f;//0.001f;
-
-	/* reset integral if disarmed */
-	if (!_v_control_mode.flag_armed || !_vehicle_status.is_rotary_wing) {
-		_rates_int.zero();
-        inf_s_pr.zero();
-        inf_s_yaw = 0.0f;
-	}
-
-	math::Vector<3> rates = get_rate();
-/*
 	math::Vector<3> rates_p_scaled = _params.rate_p.emult(pid_attenuations(_params.tpa_breakpoint_p, _params.tpa_rate_p));
 	//math::Vector<3> rates_i_scaled = _params.rate_i.emult(pid_attenuations(_params.tpa_breakpoint_i, _params.tpa_rate_i));
 	math::Vector<3> rates_d_scaled = _params.rate_d.emult(pid_attenuations(_params.tpa_breakpoint_d, _params.tpa_rate_d));
-*/
+
 	/* angular rates error */
 	math::Vector<3> rates_err = _rates_sp - rates;
-    math::Vector<3> omega_err = rates - R.transposed() * R_sp * _rates_sp;
 
-	/*_att_control = rates_p_scaled.emult(rates_err) +
+	_att_control = rates_p_scaled.emult(rates_err) +
 		       _rates_int +
 		       rates_d_scaled.emult(_rates_prev - rates) / dt +
-		       _params.rate_ff.emult(_rates_sp);*/
-
-    /* roll pitch sliding surface */
-    float n_e1 = 0.4f;
-    float s1_norm_pr = (float)sqrt( omega_err(0) * omega_err(0) + omega_err(1) * omega_err(1) );
-    float inv_s_norm_pr = 1.0f / (s1_norm_pr + eps);
-    //float inv_s_pr_ne1 = 1.0f / ((float)pow(s1_norm_pr, n_e1) + eps);
-    /* yaw sliding surface */
-    float n_e2 = 0.4f;
-    float s1_norm_yaw = fabsf(omega_err(2));
-    float inv_s_norm_yaw = 1.0f / (s1_norm_yaw + eps);
-    //float inv_s_yaw_ne1 = 1.0f / ((float)pow(s1_norm_yaw, n_e2) + eps);
-
-    math::Vector<3> _att_Tau;
-    /* roll pitch controller */
-    _att_Tau(0) = - k1_pr * fal(omega_err(0), s1_norm_pr, 1.0f - n_e1, 0.1f) - k2_pr * inf_s_pr(0);
-    _att_Tau(1) = - k1_pr * fal(omega_err(1), s1_norm_pr, 1.0f - n_e1, 0.1f) - k2_pr * inf_s_pr(1);
-    /* yaw controller */
-    _att_Tau(2) = - k1_yaw * fal(omega_err(2), s1_norm_yaw, 1.0f - n_e2, 0.1f) - k2_yaw * inf_s_yaw;
-
-    math::Matrix<3, 3> rates_hat;
-    rates_hat.zero();
-    rates_hat(0, 1) = - rates(2);
-    rates_hat(0, 2) = rates(1);
-    rates_hat(1, 2) = - rates(0);
-    rates_hat(1, 0) = rates(2);
-    rates_hat(2, 0) = - rates(1);
-    rates_hat(2, 1) = rates(0);
-    math::Vector<3> model_poly = rates_hat * _J * rates - _J * (rates_hat * R.transposed() * R_sp * _rates_sp);
-
-    math::Vector<3> control_Tau = _att_Tau + model_poly;
-    float temp_alpha = _thrust_sp * 6.25f + 1.2598f; /* mind the scale_CT = 10000 * CT */
-    float thrust_Tau = temp_alpha * temp_alpha * scale_CT * 4.0f;
-    math::Vector<4> all_Tau(thrust_Tau, control_Tau(0), control_Tau(1), control_Tau(2));
-    _att_control = get_u_from_Tau(all_Tau);
-
-    /* record the controller data */
-    _controller_rate_scope.omega_err[0] = omega_err(0);
-    _controller_rate_scope.omega_err[1] = omega_err(1);
-    _controller_rate_scope.omega_err[2] = omega_err(2);
-    _controller_rate_scope.s1_norm_pr = s1_norm_pr;
-    _controller_rate_scope.s1_norm_yaw = s1_norm_yaw;
-    _controller_rate_scope.att_Tau[0] = _att_Tau(0);
-    _controller_rate_scope.att_Tau[1] = _att_Tau(1);
-    _controller_rate_scope.att_Tau[2] = _att_Tau(2);
-    _controller_rate_scope.model_poly[0] = model_poly(0);
-    _controller_rate_scope.model_poly[1] = model_poly(1);
-    _controller_rate_scope.model_poly[2] = model_poly(2);
-    _controller_rate_scope.all_Tau[0] = all_Tau(0);
-    _controller_rate_scope.all_Tau[1] = all_Tau(1);
-    _controller_rate_scope.all_Tau[2] = all_Tau(2);
-    _controller_rate_scope.all_Tau[3] = all_Tau(3);
-    _controller_rate_scope.u[0] = _thrust_sp;
-    _controller_rate_scope.u[1] = _att_control(0);
-    _controller_rate_scope.u[2] = _att_control(1);
-    _controller_rate_scope.u[3] = _att_control(2);
-    _controller_rate_scope.inf_s_pr[0] = inf_s_pr(0);
-    _controller_rate_scope.inf_s_pr[1] = inf_s_pr(1);
-    _controller_rate_scope.inf_s_yaw = inf_s_yaw;
-    _controller_rate_scope.timestamp = hrt_absolute_time();
-
-    if (_controller_rate_scope_pub != nullptr) {
-        orb_publish(ORB_ID(controller_rate_scope), _controller_rate_scope_pub, &_controller_rate_scope);
-    } else {
-        _controller_rate_scope_pub = orb_advertise(ORB_ID(controller_rate_scope), &_controller_rate_scope);
-    } 
-
-	math::Vector<3> rates_d_scaled = _params.rate_d.emult(pid_attenuations(_params.tpa_breakpoint_d, _params.tpa_rate_d));
-    _att_control = _att_control + rates_d_scaled.emult(_rates_prev - rates) / dt;
-
-    if (_thrust_sp > MIN_TAKEOFF_THRUST) {
-        inf_s_pr(0) = inf_s_pr(0) + omega_err(0) * inv_s_norm_pr * dt;
-        inf_s_pr(1) = inf_s_pr(1) + omega_err(1) * inv_s_norm_pr * dt;
-        inf_s_yaw = inf_s_yaw + omega_err(2) * inv_s_norm_yaw * dt;
-    }
+		       _params.rate_ff.emult(_rates_sp);
 
 	_rates_sp_prev = _rates_sp;
 	_rates_prev = rates;
@@ -1645,7 +1345,7 @@ MulticopterAttitudeControl::start()
 	_control_task = px4_task_spawn_cmd("mc_att_control",
 					   SCHED_DEFAULT,
 					   SCHED_PRIORITY_ATTITUDE_CONTROL,
-					   2700,
+					   1700,
 					   (px4_main_t)&MulticopterAttitudeControl::task_main_trampoline,
 					   nullptr);
 
